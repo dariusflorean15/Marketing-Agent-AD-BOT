@@ -53,3 +53,24 @@ export interface CampaignsResponse {
     google: PlatformSourceInfo;
   };
 }
+
+/** One campaign's metrics stored for a single day — the unit of history. */
+export interface CampaignSnapshot {
+  snapshotDate: string; // YYYY-MM-DD (one row per campaign per day)
+  campaignId: string;
+  campaignName: string;
+  platform: Platform;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  cpa: number;
+  source: DataSource; // whether this day's numbers were live or mock
+}
+
+/** Response shape of GET /api/history */
+export interface HistoryResponse {
+  snapshots: CampaignSnapshot[];
+}

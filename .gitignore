@@ -9,6 +9,12 @@ build/
 .next/
 out/
 
+# Local SQLite database (snapshot history) - never commit
+data/
+*.db
+*.db-shm
+*.db-wal
+
 # Environment variables - NEVER commit these
 .env
 .env.local
