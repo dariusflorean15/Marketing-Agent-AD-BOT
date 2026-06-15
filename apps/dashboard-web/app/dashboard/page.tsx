@@ -35,18 +35,25 @@ const verdictText: Record<Verdict, string> = {
 const verdictFor = (score: number): Verdict =>
   score >= 70 ? "healthy" : score >= 40 ? "warning" : "critical";
 
+// Renders the real data source reported by the API. "mock" is shown as
+// "sample data" (plainer language), and an unrecognized/missing source falls
+// back to a neutral "connected" label rather than implying live data.
 function SourceBadge({ name, info }: { name: string; info: PlatformSourceInfo }) {
-  const styles: Record<string, string> = {
-    live: "bg-green-100 text-green-800",
-    mock: "bg-slate-200 text-slate-600",
-    error: "bg-red-100 text-red-800",
+  const map: Record<string, { label: string; cls: string }> = {
+    live: { label: "live", cls: "bg-green-100 text-green-800" },
+    mock: { label: "sample data", cls: "bg-slate-200 text-slate-600" },
+    error: { label: "live unavailable", cls: "bg-red-100 text-red-800" },
+  };
+  const { label, cls } = map[info?.source] ?? {
+    label: "connected",
+    cls: "bg-slate-200 text-slate-600",
   };
   return (
     <span
-      title={info.detail}
-      className={`rounded-full px-3 py-1 text-xs font-medium ${styles[info.source]}`}
+      title={info?.detail ?? "Source reported by the API"}
+      className={`rounded-full px-3 py-1 text-xs font-medium ${cls}`}
     >
-      {name}: {info.source === "error" ? "error (using mock)" : info.source}
+      {name}: {label}
     </span>
   );
 }
