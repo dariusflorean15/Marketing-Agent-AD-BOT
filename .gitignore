@@ -42,3 +42,7 @@ coverage/
 # Misc
 .cache/
 .turbo/
+
+# Obsidian per-user UI state (keep notes, ignore personal workspace)
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json

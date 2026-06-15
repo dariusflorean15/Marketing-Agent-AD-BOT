@@ -1,74 +1,52 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import type { AnalyzeRunResponse } from "@adbot/shared-types";
+import { analyzeWithClaude } from "./claude.js";
+import { getAllCampaigns } from "./ingestion/index.js";
 
 const app = express();
-const port = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
-app.use(cors());
+app.use(cors()); // allow the dashboard (localhost:3000) to call us
 app.use(express.json());
 
-// ── Health check ──────────────────────────────────────────
-app.get('/api/health', (_req, res) => {
+app.get("/", (_req, res) => {
   res.json({
-    status: 'ok',
-    service: 'marketing-agent-api',
-    version: '0.1.0',
-    timestamp: new Date().toISOString(),
+    service: "Marketing Agent AD BOT — API",
+    endpoints: ["GET /api/health", "GET /api/campaigns", "POST /api/analyze/run"],
   });
 });
 
-app.get('/api/ping', (_req, res) => {
-  res.json({ message: 'pong' });
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", service: "api-server", time: new Date().toISOString() });
 });
 
-// ── Analyze endpoint (Claude stub) ────────────────────────
-// This will later call the Claude API with real campaign data
-app.post('/api/analyze/run', async (req, res) => {
+// Normalized campaigns from both platforms (live where creds exist, mock otherwise).
+app.get("/api/campaigns", async (_req, res) => {
   try {
-    const { campaigns, business_context } = req.body;
-
-    if (!campaigns || !Array.isArray(campaigns)) {
-      return res.status(400).json({
-        error: 'Missing or invalid campaigns array in request body',
-      });
-    }
-
-    // TODO: Replace this stub with real Claude API call
-    // The Claude API key lives in .env as ANTHROPIC_API_KEY
-    const stubResponse = {
-      executive_summary:
-        'Stub response. Wire up ANTHROPIC_API_KEY in .env to get real Claude analysis.',
-      priority_actions: campaigns.map((c: Record<string, unknown>, i: number) => ({
-        entity_name: c.name || `Campaign ${i + 1}`,
-        entity_type: 'campaign',
-        platform: c.platform || 'unknown',
-        issue: 'Awaiting real data analysis',
-        diagnosis: 'Claude integration not yet wired',
-        recommended_action: 'Add ANTHROPIC_API_KEY to .env and implement Claude call',
-        priority: 'medium',
-        bucket: 'need_more_data',
-        confidence: 0,
-      })),
-      pause_list: [],
-      scale_list: [],
-      monitor_list: [],
-      data_gaps: ['Claude API not connected yet'],
-      received_at: new Date().toISOString(),
-      business_context: business_context || null,
-    };
-
-    return res.json(stubResponse);
-  } catch (error) {
-    console.error('Error in /api/analyze/run:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    res.json(await getAllCampaigns());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ campaigns failed:", message);
+    res.status(500).json({ error: message });
   }
 });
 
-// ── Start server ──────────────────────────────────────────
-app.listen(port, () => {
-  console.log(`Marketing Agent API running on http://localhost:${port}`);
-  console.log(`Health check: http://localhost:${port}/api/health`);
+// Runs the analysis: ingested metrics → Claude → recommendations.
+app.post("/api/analyze/run", async (_req, res) => {
+  try {
+    const { campaigns } = await getAllCampaigns();
+    const results = await analyzeWithClaude(campaigns);
+    const response: AnalyzeRunResponse = { results };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ analyze/run failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ api-server running at http://localhost:${PORT}`);
 });

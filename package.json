@@ -1,0 +1,13 @@
+{
+  "name": "marketing-agent-ad-bot",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace apps/api-server",
+    "dev:web": "npm run dev --workspace apps/dashboard-web"
+  }
+}
