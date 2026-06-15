@@ -1,8 +1,13 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import type { AnalyzeRunResponse, HistoryResponse } from "@adbot/shared-types";
-import { analyzeWithClaude } from "./claude.js";
+import type {
+  AnalyzeRunResponse,
+  ChatRequest,
+  ChatResponse,
+  HistoryResponse,
+} from "@adbot/shared-types";
+import { analyzeWithClaude, askAnalyst } from "./claude.js";
 import { getAllCampaigns } from "./ingestion/index.js";
 import { scoreCampaigns, type ScoringExtras } from "./scoring.js";
 import { captureDailySnapshot, readHistory, readPreviousCtrMap } from "./db/index.js";
@@ -22,6 +27,7 @@ app.get("/", (_req, res) => {
       "GET /api/history",
       "POST /api/analyze/run",
       "POST /api/analyze/score",
+      "POST /api/chat",
     ],
   });
 });
@@ -100,6 +106,52 @@ app.post("/api/analyze/score", async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ analyze/score failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Conversational analyst: answers questions using current campaigns + scores as context.
+app.post("/api/chat", async (req, res) => {
+  try {
+    const body = req.body as ChatRequest;
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
+    const valid = messages.filter(
+      (m) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string"
+    );
+    if (valid.length === 0) {
+      res.status(400).json({ error: "Provide at least one message." });
+      return;
+    }
+
+    const { campaigns } = await getAllCampaigns();
+
+    // Score the campaigns so Claude can reference health, verdicts, and issues.
+    let extras: Record<string, ScoringExtras> = {};
+    try {
+      const previousCtr = readPreviousCtrMap(7);
+      extras = Object.fromEntries(
+        Object.entries(previousCtr).map(([id, ctr]) => [id, { previousCtr: ctr }])
+      );
+    } catch {
+      /* no history yet — score without trend context */
+    }
+    const scored = scoreCampaigns(campaigns, extras);
+    const context = campaigns.map((c) => {
+      const s = scored.find((x) => x.campaignId === c.campaignId);
+      return {
+        ...c,
+        score: s?.score,
+        verdict: s?.verdict,
+        issues: s?.penalties.map((p) => p.rule) ?? [],
+      };
+    });
+
+    const reply = await askAnalyst(valid, JSON.stringify(context, null, 2));
+    const response: ChatResponse = { reply };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ chat failed:", message);
     res.status(500).json({ error: message });
   }
 });

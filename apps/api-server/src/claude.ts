@@ -1,7 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { AnalysisResult, CampaignMetrics } from "@adbot/shared-types";
+import type { AnalysisResult, CampaignMetrics, ChatMessage } from "@adbot/shared-types";
+
+function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey.startsWith("PASTE_")) {
+    throw new Error("ANTHROPIC_API_KEY is not set in apps/api-server/.env");
+  }
+  return new Anthropic({ apiKey });
+}
 
 // Prompt template lives in the shared prompt library package.
 const TEMPLATE_PATH = path.resolve(
@@ -56,12 +64,7 @@ function validateResults(raw: unknown): AnalysisResult[] {
 export async function analyzeWithClaude(
   campaigns: CampaignMetrics[]
 ): Promise<AnalysisResult[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey.startsWith("PASTE_")) {
-    throw new Error("ANTHROPIC_API_KEY is not set in apps/api-server/.env");
-  }
-
-  const client = new Anthropic({ apiKey });
+  const client = getClient();
   const { system, user } = loadPrompts(campaigns);
 
   const message = await client.messages.create({
@@ -78,4 +81,40 @@ export async function analyzeWithClaude(
     .join("");
 
   return validateResults(JSON.parse(extractJson(text)));
+}
+
+/**
+ * Conversational analyst. Answers the user's questions using a JSON snapshot of
+ * the campaigns (with their computed scores) as grounding context.
+ */
+export async function askAnalyst(
+  messages: ChatMessage[],
+  contextJson: string
+): Promise<string> {
+  const client = getClient();
+
+  const system = [
+    "You are AD BOT, a marketing analyst assistant inside an ad-performance dashboard.",
+    "You are given a JSON snapshot of the user's current campaigns, each with its metrics and a computed health score (0-100), verdict, and any flagged issues.",
+    "Answer the user's questions concisely and specifically: cite campaign names and real numbers from the data, and when asked for advice give concrete, actionable steps.",
+    "Only use the data provided. If something isn't in the data, say so rather than guessing.",
+    "Write in plain text with short paragraphs. Do not use markdown headers, tables, or bullet characters.",
+    "",
+    "CAMPAIGN DATA:",
+    contextJson,
+  ].join("\n");
+
+  const response = await client.messages.create({
+    model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
+    max_tokens: 1000,
+    temperature: 0.3,
+    system,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+  });
+
+  return response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
 }

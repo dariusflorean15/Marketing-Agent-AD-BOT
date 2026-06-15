@@ -74,3 +74,19 @@ export interface CampaignSnapshot {
 export interface HistoryResponse {
   snapshots: CampaignSnapshot[];
 }
+
+/** One turn in the Chat Analyst conversation. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Request body for POST /api/chat */
+export interface ChatRequest {
+  messages: ChatMessage[];
+}
+
+/** Response shape of POST /api/chat */
+export interface ChatResponse {
+  reply: string;
+}
