@@ -19,10 +19,19 @@
 ## Phase 3 — Scoring engine
 
 - [x] `scoring.ts` with draft rules from [[data-schema]]
-- [x] Unit tests for each rule (14 tests, `npm test`)
+- [x] Unit tests for each rule (23 tests, `npm test`)
 - [x] Deterministic `POST /api/analyze/score` endpoint (no Claude call)
-- [ ] Verdict bands tuned on real-ish data (see decision-log: zero-conv lands at 70)
-- [ ] Dashboard surfaces scores + verdict badges from `/api/analyze/score`
+- [x] Verdict bands tuned (zero-conversion split into warning/critical tiers)
+- [x] Dashboard surfaces scores + verdict badges (Overview Health column + Alerts tab)
+
+## Phase 3.5 — History + insight features (built on top of Phase 3)
+
+- [x] SQLite snapshot history (`src/db/`), daily capture, `GET /api/history`, ~4 weeks seeded
+- [x] CTR-drop rule activated from stored history
+- [x] Trends page — per-campaign charts with metric toggle + CTR-falling flag
+- [x] Alerts page — prioritized issues from scoring penalties
+- [x] Conversational Chat Analyst (`POST /api/chat`) grounded in campaigns + scores
+- [ ] Scheduled weekly digest (Claude summary → email/Slack)
 
 ## Phase 4 — Real data ingestion
 

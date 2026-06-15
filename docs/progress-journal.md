@@ -2,6 +2,21 @@
 
 Newest first. One entry per working session.
 
+## 2026-06-15 — Phase 3 scoring, history database, and dashboard build-out
+
+**Built:**
+- **Scoring engine** (`src/scoring.ts`): deterministic rules from [[data-schema]] (CTR floor, CTR-drop vs previous period, CPA > 2× account avg, tiered zero-conversions, Meta frequency); verdict bands; exported `THRESHOLDS`/`PENALTIES`. 23 unit tests via `npm test`. New deterministic `POST /api/analyze/score` (no Claude call, no cost).
+- **Snapshot history database** (SQLite via `better-sqlite3`, `src/db/`): one row per campaign per day, auto-captured on `GET /api/campaigns`; `GET /api/history`; pure helpers (`generateSyntheticHistory`, `selectPreviousCtrMap`) with their own tests. Seeded ~4 weeks of sample history (`npm run seed`). This activated the previously-dormant CTR-drop rule.
+- **Conversational Chat Analyst** (`POST /api/chat` → `askAnalyst`): Claude answers questions grounded in current campaigns + computed scores. Page rebuilt as a chat (bubbles, suggestion chips, typing indicator).
+- **Dashboard pages:** Trends (per-campaign SVG charts, metric toggle, CTR-falling flag), Overview upgraded (summary cards + Health column + CTR↓ flag), Alerts (prioritized issues from scoring penalties). Sidebar: Overview / Alerts / Trends / Chat Analyst.
+- **Tuned** the zero-conversion rule into warning (spend > $50) / critical (spend > $500) tiers (see [[decision-log]]).
+
+**Verified:** all 23 tests pass; live Claude chat gave accurate, grounded answers citing real numbers; Generic Search correctly flips to critical after tuning.
+
+**Credentials:** all `.env` keys are in and authenticating, but both ad accounts still need activation (Meta "get set up to run ads"; Google `CUSTOMER_NOT_ENABLED`) before live data flows — code falls back to mock per platform meanwhile.
+
+**Next:** deploy (Phase 5, Railway + Vercel) so Kaloyan can use it; scheduled weekly digest; activate ad-account billing.
+
 ## 2026-06-12 — Claude live + real data ingestion
 
 **Built:**
