@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@adbot/shared-types";
-
-const API_URL = "http://localhost:4000";
+import { API_URL } from "@/app/lib/api";
 
 const SUGGESTIONS = [
   "Give me a quick health summary of all campaigns.",

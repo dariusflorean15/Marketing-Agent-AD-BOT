@@ -170,3 +170,12 @@ export function readPreviousCtrMap(lagDays = 7): Record<string, number> {
   if (!latest) return {};
   return selectPreviousCtrMap(all, latest, lagDays);
 }
+
+/**
+ * Seeds the provided rows only when the database has no history yet. Lets a
+ * fresh deployment come up with sample data without a manual seed step.
+ */
+export function seedIfEmpty(makeRows: () => CampaignSnapshot[]): number {
+  if (readHistory().length > 0) return 0;
+  return insertSnapshots(makeRows());
+}

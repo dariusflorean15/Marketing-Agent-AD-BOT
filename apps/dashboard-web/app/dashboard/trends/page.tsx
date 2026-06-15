@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CampaignSnapshot, HistoryResponse, Platform } from "@adbot/shared-types";
-
-const API_URL = "http://localhost:4000";
+import { API_URL } from "@/app/lib/api";
 
 type MetricKey = "ctr" | "spend" | "conversions";
 

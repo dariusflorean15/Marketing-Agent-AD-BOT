@@ -10,7 +10,14 @@ import type {
 import { analyzeWithClaude, askAnalyst } from "./claude.js";
 import { getAllCampaigns } from "./ingestion/index.js";
 import { scoreCampaigns, type ScoringExtras } from "./scoring.js";
-import { captureDailySnapshot, readHistory, readPreviousCtrMap } from "./db/index.js";
+import {
+  captureDailySnapshot,
+  readHistory,
+  readPreviousCtrMap,
+  seedIfEmpty,
+} from "./db/index.js";
+import { generateSyntheticHistory } from "./db/history.js";
+import { mockCampaigns } from "./mock-data.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -155,6 +162,16 @@ app.post("/api/chat", async (req, res) => {
     res.status(500).json({ error: message });
   }
 });
+
+// On a fresh database (e.g. a new deployment), come up with sample history so
+// trends, alerts, and the CTR-drop rule have data immediately.
+try {
+  const today = new Date().toISOString().slice(0, 10);
+  const seeded = seedIfEmpty(() => generateSyntheticHistory(mockCampaigns, 28, today));
+  if (seeded > 0) console.log(`🌱 Seeded ${seeded} sample snapshot rows on first run.`);
+} catch (err) {
+  console.error("⚠️ startup seed skipped:", err);
+}
 
 app.listen(PORT, () => {
   console.log(`✅ api-server running at http://localhost:${PORT}`);

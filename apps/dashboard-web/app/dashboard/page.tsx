@@ -8,8 +8,7 @@ import type {
   PlatformSourceInfo,
   Verdict,
 } from "@adbot/shared-types";
-
-const API_URL = "http://localhost:4000";
+import { API_URL } from "@/app/lib/api";
 
 const eur = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });

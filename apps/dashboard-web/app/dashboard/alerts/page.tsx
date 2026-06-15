@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AnalysisResult, AnalyzeRunResponse, Platform } from "@adbot/shared-types";
-
-const API_URL = "http://localhost:4000";
+import { API_URL } from "@/app/lib/api";
 
 type Penalty = { rule: string; penalty: number; detail: string };
 type ScoredCampaign = AnalysisResult & { penalties?: Penalty[] };
