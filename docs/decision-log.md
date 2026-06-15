@@ -2,6 +2,15 @@
 
 Newest first. Format: date — decision — why.
 
+## 2026-06-15 — Phase 3 scoring engine is deterministic and rule-based
+`src/scoring.ts` implements the draft penalties from [[data-schema]] (start at 100, subtract). It runs with no Claude call via `POST /api/analyze/score`, so scores are free, instant, and reproducible — Claude stays for the plain-language narrative in `/api/analyze/run`. Thresholds live in exported `THRESHOLDS`/`PENALTIES` constants for easy tuning. 14 unit tests cover every rule and the band boundaries (`npm test`).
+
+## 2026-06-15 — CTR-drop and frequency rules are optional
+Normalized `CampaignMetrics` has no previous-period CTR or Meta frequency, so those two rules only fire when that data is passed via the `extras` arg; otherwise they're skipped rather than faked. Account-average CPA is computed only over campaigns that actually converted, so zero-conversion campaigns don't drag the baseline to 0.
+
+## 2026-06-15 — TO TUNE: zero-conversion penalty lands on the healthy boundary
+A campaign with spend but zero conversions loses 30, scoring exactly 70 = "healthy". On real data that reads too generous (e.g. $980 spent, 0 conv shows green). Candidate fixes: raise the zero-conv penalty to ~35-40, or lower the healthy band to >70. Decide once we see live numbers.
+
 ## 2026-06-11 — docs/ doubles as Obsidian vault
 Shared knowledge base versioned with the code; Kaloyan gets it via `git pull`, no separate sync tool.
 

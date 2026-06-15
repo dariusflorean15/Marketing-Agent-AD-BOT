@@ -18,9 +18,11 @@
 
 ## Phase 3 — Scoring engine
 
-- [ ] `scoring.ts` with draft rules from [[data-schema]]
-- [ ] Unit tests for each rule
-- [ ] Verdict bands tuned on real-ish data
+- [x] `scoring.ts` with draft rules from [[data-schema]]
+- [x] Unit tests for each rule (14 tests, `npm test`)
+- [x] Deterministic `POST /api/analyze/score` endpoint (no Claude call)
+- [ ] Verdict bands tuned on real-ish data (see decision-log: zero-conv lands at 70)
+- [ ] Dashboard surfaces scores + verdict badges from `/api/analyze/score`
 
 ## Phase 4 — Real data ingestion
 

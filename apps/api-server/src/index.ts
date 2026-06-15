@@ -4,6 +4,7 @@ import cors from "cors";
 import type { AnalyzeRunResponse } from "@adbot/shared-types";
 import { analyzeWithClaude } from "./claude.js";
 import { getAllCampaigns } from "./ingestion/index.js";
+import { scoreCampaigns } from "./scoring.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -14,7 +15,12 @@ app.use(express.json());
 app.get("/", (_req, res) => {
   res.json({
     service: "Marketing Agent AD BOT — API",
-    endpoints: ["GET /api/health", "GET /api/campaigns", "POST /api/analyze/run"],
+    endpoints: [
+      "GET /api/health",
+      "GET /api/campaigns",
+      "POST /api/analyze/run",
+      "POST /api/analyze/score",
+    ],
   });
 });
 
@@ -43,6 +49,22 @@ app.post("/api/analyze/run", async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ analyze/run failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Deterministic rule-based scoring — no Claude call, no API cost. Works on
+// live or mock data and returns each campaign's score, verdict, and the
+// transparent penalty breakdown behind it.
+app.post("/api/analyze/score", async (_req, res) => {
+  try {
+    const { campaigns } = await getAllCampaigns();
+    const results = scoreCampaigns(campaigns);
+    const response: AnalyzeRunResponse = { results };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ analyze/score failed:", message);
     res.status(500).json({ error: message });
   }
 });
