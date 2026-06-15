@@ -17,6 +17,12 @@ export default function DashboardLayout({
             Overview
           </Link>
           <Link
+            href="/dashboard/alerts"
+            className="rounded px-3 py-2 hover:bg-slate-100"
+          >
+            Alerts
+          </Link>
+          <Link
             href="/dashboard/trends"
             className="rounded px-3 py-2 hover:bg-slate-100"
           >
