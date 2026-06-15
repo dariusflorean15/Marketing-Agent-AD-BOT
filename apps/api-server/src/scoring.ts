@@ -7,7 +7,8 @@ export const THRESHOLDS = {
   ctrFloor: 0.01, // CTR below 1% is unhealthy
   ctrDropRatio: 0.25, // CTR fell >25% vs the previous period
   cpaMultiple: 2, // CPA more than 2x the account average
-  zeroConvSpend: 50, // zero conversions while spending more than this
+  zeroConvSpend: 50, // zero conversions while spending more than this → warning
+  zeroConvSevereSpend: 500, // zero conversions while spending more than this → critical
   frequencyCap: 4, // Meta frequency above this means ad fatigue
 } as const;
 
@@ -15,7 +16,8 @@ export const PENALTIES = {
   ctrFloor: 20,
   ctrDrop: 20,
   cpaHigh: 25,
-  zeroConv: 30,
+  zeroConv: 40, // meaningful spend, no conversions → warning on its own
+  zeroConvSevere: 65, // large spend, no conversions → critical on its own
   frequency: 10,
 } as const;
 
@@ -110,12 +112,16 @@ export function scoreCampaign(
     });
   }
 
-  // Rule 4: spending with nothing to show for it.
+  // Rule 4: spending with nothing to show for it. Scales with how much was wasted —
+  // a large spend with zero conversions is critical on its own.
   if (campaign.conversions === 0 && campaign.spend > ctx.zeroConvSpend) {
+    const severe = campaign.spend > THRESHOLDS.zeroConvSevereSpend;
     penalties.push({
       rule: "zero-conversions",
-      penalty: PENALTIES.zeroConv,
-      detail: `Spent ${money(campaign.spend)} with zero conversions; check tracking and landing page, then pause if it persists.`,
+      penalty: severe ? PENALTIES.zeroConvSevere : PENALTIES.zeroConv,
+      detail: severe
+        ? `Spent ${money(campaign.spend)} with zero conversions — significant wasted budget; pause and fix tracking / landing page now.`
+        : `Spent ${money(campaign.spend)} with zero conversions; check tracking and landing page, then pause if it persists.`,
     });
   }
 

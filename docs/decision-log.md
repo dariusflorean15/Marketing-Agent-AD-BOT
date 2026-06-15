@@ -2,6 +2,9 @@
 
 Newest first. Format: date — decision — why.
 
+## 2026-06-15 — Tuned the zero-conversion rule into two tiers (resolves earlier TO TUNE)
+A single −30 put a zero-conversion campaign at exactly 70 = "healthy", which read wrong (e.g. Generic Search spent $980 for 0 conversions yet showed green). Now: spend > $50 → −40 (warning), spend > $500 → −65 (critical). Generic Search now scores 35 / critical. Bands left unchanged so no single penalty lands on a boundary. The Chat Analyst had independently flagged this on live data.
+
 ## 2026-06-15 — Phase 3 scoring engine is deterministic and rule-based
 `src/scoring.ts` implements the draft penalties from [[data-schema]] (start at 100, subtract). It runs with no Claude call via `POST /api/analyze/score`, so scores are free, instant, and reproducible — Claude stays for the plain-language narrative in `/api/analyze/run`. Thresholds live in exported `THRESHOLDS`/`PENALTIES` constants for easy tuning. 14 unit tests cover every rule and the band boundaries (`npm test`).
 

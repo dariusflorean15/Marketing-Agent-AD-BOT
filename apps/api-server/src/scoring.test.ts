@@ -93,6 +93,20 @@ test("zero conversions below the spend threshold is not penalized", () => {
   assert.ok(!r.penalties.some((p) => p.rule === "zero-conversions"));
 });
 
+test("a small zero-conversion spend is a warning, not critical", () => {
+  const r = scoreCampaign(campaign({ conversions: 0, cpa: 0, spend: 120 }), ctx(10));
+  assert.equal(r.score, 100 - PENALTIES.zeroConv); // 60
+  assert.equal(r.verdict, "warning");
+});
+
+test("a large zero-conversion spend is severe and critical on its own", () => {
+  const r = scoreCampaign(campaign({ conversions: 0, cpa: 0, spend: 980 }), ctx(10));
+  const p = r.penalties.find((x) => x.rule === "zero-conversions");
+  assert.equal(p?.penalty, PENALTIES.zeroConvSevere);
+  assert.equal(r.score, 100 - PENALTIES.zeroConvSevere); // 35
+  assert.equal(r.verdict, "critical");
+});
+
 test("Meta frequency above the cap applies the frequency penalty", () => {
   const r = scoreCampaign(campaign({ platform: "meta" }), ctx(10), { frequency: 5 });
   assert.ok(r.penalties.some((p) => p.rule === "frequency"));
@@ -104,22 +118,25 @@ test("frequency rule does not apply to Google campaigns", () => {
 });
 
 test("multiple failing rules stack and the score floors at 0", () => {
-  // ctr-floor (20) + zero-conv (30) + frequency (10) = 60 -> score 40
+  // ctr-floor (20) + zero-conv (40, spend 300 < severe) + frequency (10) = 70 -> score 30
   const r = scoreCampaign(
     campaign({ ctr: 0.004, conversions: 0, cpa: 0, spend: 300, platform: "meta" }),
     ctx(10),
     { frequency: 6 }
   );
   assert.equal(r.score, 100 - (PENALTIES.ctrFloor + PENALTIES.zeroConv + PENALTIES.frequency));
-  assert.equal(r.verdict, "warning");
+  assert.equal(r.verdict, "critical");
 
-  // Pile on a CTR drop too; total 80 -> score 20 -> critical, never negative.
+  // Pile on a CTR drop too; total 90 -> score 10 -> critical, never negative.
   const worse = scoreCampaign(
     campaign({ ctr: 0.004, conversions: 0, cpa: 0, spend: 300, platform: "meta" }),
     ctx(10),
     { frequency: 6, previousCtr: 0.05 }
   );
-  assert.equal(worse.score, 20);
+  assert.equal(
+    worse.score,
+    100 - (PENALTIES.ctrFloor + PENALTIES.zeroConv + PENALTIES.frequency + PENALTIES.ctrDrop)
+  );
   assert.equal(worse.verdict, "critical");
   assert.ok(worse.score >= 0);
 });

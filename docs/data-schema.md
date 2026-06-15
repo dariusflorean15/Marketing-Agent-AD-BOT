@@ -39,18 +39,21 @@ Same shape for every platform.
 
 `AnalyzeRunResponse = { results: AnalysisResult[] }` — returned by `POST /api/analyze/run`.
 
-## Scoring rules (draft, not yet implemented)
+## Scoring rules (implemented in `apps/api-server/src/scoring.ts`)
 
-Start at 100, subtract penalties:
+Start at 100, subtract penalties. Thresholds/penalties live in exported `THRESHOLDS` / `PENALTIES` constants.
 
 | Rule | Penalty |
 |---|---|
 | CTR < 1% | −20 |
 | CTR dropped > 25% vs previous period | −20 |
 | CPA > 2× account average | −25 |
-| Zero conversions with spend > threshold | −30 |
+| Zero conversions, spend > $50 | −40 (warning on its own) |
+| Zero conversions, spend > $500 | −65 (critical on its own) |
 | Frequency > 4 (Meta) | −10 |
 
 Verdict bands: **≥ 70 healthy · 40–69 warning · < 40 critical**
+
+The zero-conversion rule is tiered (tuned 2026-06-15) so that a small wasted spend reads as a warning while a large one (e.g. $980 with no conversions) reads as critical, instead of landing on the healthy boundary. CTR-drop and frequency need history/extra data and only fire when it's available.
 
 These rules live in the API server (planned `apps/api-server/src/scoring.ts`) and are tuned in [[decision-log]] entries as we learn.
