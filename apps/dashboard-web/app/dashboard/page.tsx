@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   AnalysisResult,
   AnalyzeRunResponse,
+  CampaignMetrics,
+  CampaignSnapshot,
   CampaignsResponse,
+  HistoryResponse,
   PlatformSourceInfo,
   Verdict,
 } from "@adbot/shared-types";
 import { API_URL } from "@/app/lib/api";
+import { LineChart } from "@/app/lib/LineChart";
 
 const eur = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -78,10 +82,156 @@ function SummaryCard({
   );
 }
 
+const DRAWER_METRICS = {
+  ctr: { label: "CTR", color: "#2563eb", format: (n: number) => `${(n * 100).toFixed(2)}%` },
+  spend: { label: "Spend", color: "#d97706", format: (n: number) => `$${n.toFixed(0)}` },
+  conversions: { label: "Conversions", color: "#16a34a", format: (n: number) => `${Math.round(n)}` },
+} as const;
+type DrawerMetric = keyof typeof DRAWER_METRICS;
+
+const RULE_TITLES: Record<string, string> = {
+  "ctr-floor": "Low CTR",
+  "ctr-drop": "CTR falling",
+  "cpa-high": "High CPA",
+  "zero-conversions": "Wasted spend — no conversions",
+  frequency: "Ad fatigue — high frequency",
+};
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
+  );
+}
+
+/** Slide-out panel with a campaign's chart, metrics, score breakdown, and advice. */
+function CampaignDrawer({
+  campaign,
+  scored,
+  history,
+  onClose,
+}: {
+  campaign: CampaignMetrics;
+  scored?: ScoredCampaign;
+  history: CampaignSnapshot[] | null;
+  onClose: () => void;
+}) {
+  const [metric, setMetric] = useState<DrawerMetric>("ctr");
+  const m = DRAWER_METRICS[metric];
+  const points = (history ?? []).map((h) => ({ label: h.snapshotDate, value: h[metric] }));
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b border-slate-200 p-5">
+          <div>
+            <h3 className="text-lg font-bold">{campaign.campaignName}</h3>
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              {campaign.platform === "meta" ? "Meta Ads" : "Google Ads"}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-6 p-5">
+          {scored && (
+            <div className="flex items-center gap-3">
+              <span className={`text-3xl font-bold ${verdictText[scored.verdict]}`}>{scored.score}</span>
+              <span className="text-sm text-slate-400">/100</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${verdictPill[scored.verdict]}`}>
+                {scored.verdict}
+              </span>
+            </div>
+          )}
+
+          <div>
+            <div className="mb-2 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+              {(Object.keys(DRAWER_METRICS) as DrawerMetric[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setMetric(k)}
+                  className={`flex-1 rounded-md px-2 py-1 font-medium ${
+                    metric === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  {DRAWER_METRICS[k].label}
+                </button>
+              ))}
+            </div>
+            {history === null ? (
+              <div className="flex h-[140px] items-center text-sm text-slate-400">Loading history…</div>
+            ) : (
+              <LineChart points={points} color={m.color} format={m.format} height={140} />
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <Stat label="Spend" value={eur(campaign.spend)} />
+            <Stat label="Impressions" value={campaign.impressions.toLocaleString()} />
+            <Stat label="Clicks" value={campaign.clicks.toLocaleString()} />
+            <Stat label="CTR" value={pct(campaign.ctr)} />
+            <Stat label="CPC" value={eur(campaign.cpc)} />
+            <Stat label="Conversions" value={String(campaign.conversions)} />
+            <Stat label="CPA" value={campaign.conversions > 0 ? eur(campaign.cpa) : "—"} />
+          </div>
+
+          {scored?.penalties && scored.penalties.length > 0 && (
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Issues</h4>
+              <ul className="space-y-2">
+                {scored.penalties.map((p, i) => (
+                  <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="font-medium">{RULE_TITLES[p.rule] ?? p.rule}</div>
+                    <div className="mt-0.5 text-slate-600">{p.detail}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {scored && (
+            <div>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Recommendation</h4>
+              <p className="text-sm text-slate-700">{scored.recommendation}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OverviewPage() {
   const [data, setData] = useState<CampaignsResponse | null>(null);
   const [scores, setScores] = useState<Record<string, ScoredCampaign>>({});
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<CampaignMetrics | null>(null);
+  const [history, setHistory] = useState<CampaignSnapshot[] | null>(null);
+
+  async function openCampaign(c: CampaignMetrics) {
+    setSelected(c);
+    setHistory(null);
+    try {
+      const res = await fetch(`${API_URL}/api/history?campaignId=${encodeURIComponent(c.campaignId)}`);
+      if (res.ok) {
+        const body: HistoryResponse = await res.json();
+        setHistory(body.snapshots);
+      } else {
+        setHistory([]);
+      }
+    } catch {
+      setHistory([]);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -194,7 +344,11 @@ export default function OverviewPage() {
                 const s = scores[c.campaignId];
                 const ctrFalling = s?.penalties?.some((p) => p.rule === "ctr-drop");
                 return (
-                  <tr key={c.campaignId} className="border-b border-slate-100 last:border-0">
+                  <tr
+                    key={c.campaignId}
+                    onClick={() => openCampaign(c)}
+                    className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                  >
                     <td className="px-4 py-3 font-medium">
                       {c.campaignName}
                       {ctrFalling && (
@@ -236,6 +390,19 @@ export default function OverviewPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {data && data.campaigns.length > 0 && (
+        <p className="mt-3 text-xs text-slate-400">Tip: click a campaign to see its trend and full breakdown.</p>
+      )}
+
+      {selected && (
+        <CampaignDrawer
+          campaign={selected}
+          scored={scores[selected.campaignId]}
+          history={history}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );

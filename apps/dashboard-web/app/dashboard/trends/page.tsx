@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CampaignSnapshot, HistoryResponse, Platform } from "@adbot/shared-types";
 import { API_URL } from "@/app/lib/api";
+import { LineChart } from "@/app/lib/LineChart";
 
 type MetricKey = "ctr" | "spend" | "conversions";
 
@@ -13,39 +14,6 @@ const METRICS: Record<MetricKey, { label: string; color: string; format: (n: num
 };
 
 const platformLabel = (p: Platform) => (p === "meta" ? "Meta Ads" : "Google Ads");
-
-/** Minimal area + line chart from a list of numbers, no chart library. */
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  const W = 520;
-  const H = 120;
-  const P = 10;
-  if (values.length < 2) {
-    return <div className="flex h-32 items-center text-sm text-slate-400">Not enough data to chart.</div>;
-  }
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = max - min || 1;
-  const stepX = (W - 2 * P) / (values.length - 1);
-  const pts = values.map((v, i) => {
-    const x = P + i * stepX;
-    const y = H - P - ((v - min) / span) * (H - 2 * P);
-    return [x, y] as const;
-  });
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  const area =
-    `M${pts[0][0].toFixed(1)} ${H - P} ` +
-    pts.map((p) => `L${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ") +
-    ` L${pts[pts.length - 1][0].toFixed(1)} ${H - P} Z`;
-  const last = pts[pts.length - 1];
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-32 w-full" preserveAspectRatio="none">
-      <path d={area} fill={color} opacity={0.08} />
-      <path d={line} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
-      <circle cx={last[0]} cy={last[1]} r={3} fill={color} />
-    </svg>
-  );
-}
 
 interface Series {
   campaignId: string;
@@ -184,7 +152,12 @@ export default function TrendsPage() {
                 </div>
 
                 <div className="mt-2">
-                  <Sparkline values={s.snapshots.map((x) => x[metric])} color={m.color} />
+                  <LineChart
+                    points={s.snapshots.map((x) => ({ label: x.snapshotDate, value: x[metric] }))}
+                    color={m.color}
+                    format={m.format}
+                    height={128}
+                  />
                 </div>
               </div>
             );
