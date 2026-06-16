@@ -6,6 +6,20 @@ import { fetchGoogleCampaigns, hasGoogleCreds } from "./google.js";
 const mockFor = (platform: "meta" | "google") =>
   mockCampaigns.filter((c) => c.platform === platform);
 
+function serializeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    const e = err as any;
+    if (e?.message) return String(e.message);
+    if (e?.errors?.[0]?.message) return String(e.errors[0].message);
+    if (e?.details) return String(e.details);
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 async function loadPlatform(
   platform: "meta" | "google",
   hasCreds: () => boolean,
@@ -17,8 +31,8 @@ async function loadPlatform(
   try {
     return { campaigns: await fetchLive(), info: { source: "live" } };
   } catch (err) {
-    const detail = err instanceof Error ? err.message : "Unknown error";
-    console.error(`⚠️ ${platform} ingestion failed, falling back to mock:`, detail);
+    const detail = serializeError(err);
+    console.error(`\u26a0\ufe0f ${platform} ingestion failed, falling back to mock:`, detail);
     return { campaigns: mockFor(platform), info: { source: "error", detail } };
   }
 }
