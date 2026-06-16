@@ -2,6 +2,22 @@
 
 Newest first. One entry per working session.
 
+## 2026-06-15 (later) — Deployed to production + Meta live
+
+**Shipped:**
+- **API → Railway** (project "respectful-courtesy", service `api-server`): https://api-server-production-164e.up.railway.app. Monorepo build `npm run build --workspace=api-server`, start `npm run start --workspace=api-server`. All env vars set (Anthropic + 9 Meta/Google). Seeds sample history on first boot.
+- **Dashboard → Vercel** (project `ad-bot-dashboard`): https://ad-bot-dashboard.vercel.app. Root `apps/dashboard-web`, `NEXT_PUBLIC_API_URL` = the Railway URL. **This is the link to share with Kaloyan.**
+- Made the dashboard API base configurable (`app/lib/api.ts`), added a production `start` script and boot-time seeding, relabeled source badges (mock→"sample data", error→"live unavailable").
+- **Meta Ads: LIVE** — created a never-expiring System User token (`ad-bot`, AdMind Agency) with `ads_read`/`read_insights`, deployed as `META_ACCESS_TOKEN`. `/api/campaigns` returns `"meta":{"source":"live"}`.
+- **Google Ads error handling** improved (`serializeError()` in `ingestion/index.ts`) so the real gRPC error surfaces instead of "Unknown error".
+
+**Gotchas logged:** Railway env-var edits need the "Apply changes" deploy; the `start` script must be committed/pushed or Railway crashes "Missing script: start"; `NEXT_PUBLIC_*` is baked at Vercel build time (redeploy if changed).
+
+**Where we left off / check in a few days:**
+- **Google Ads** is wired correctly but blocked on two account gates: (1) developer-token **Basic access application submitted** (Google reviews ~3 business days), and (2) the **account must be enabled** (billing/setup at ads.google.com — confirm this is done). Both must clear before Google goes live; it then flips automatically.
+- To check status later: open `/api/campaigns` and look at `sources.google`. Still `"error"` = waiting; `"live"` = done.
+- Real numbers also require **actual running campaigns** (accounts are new/empty), so even when live it may show zero campaigns until ads run.
+
 ## 2026-06-15 — Phase 3 scoring, history database, and dashboard build-out
 
 **Built:**

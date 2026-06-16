@@ -39,11 +39,11 @@
 - [x] Google Ads API connection + normalizer (`src/ingestion/google.ts`)
 - [x] Campaign list endpoint (`GET /api/campaigns`) + Overview page table
 - [x] Live-or-mock fallback per platform with source badges in the UI
-- [ ] Meta: durable System User token (current token may be short-lived)
-- [ ] Google: complete OAuth credentials + Basic access approval
+- [x] Meta: durable System User token (never-expiring) — Meta source is live
+- [ ] Google: account activation (billing) + Basic access approval — applied 2026-06-15, awaiting Google (~3 business days)
 
 ## Phase 5 — Deployment & sharing
 
-- [ ] API → Railway, dashboard → Vercel
-- [ ] Env/secrets configured in platforms
-- [ ] Basic auth or allowlist so only Darius & Kaloyan can access
+- [x] API → Railway, dashboard → Vercel (both live)
+- [x] Env/secrets configured in platforms
+- [ ] Basic auth or allowlist so only Darius & Kaloyan can access (currently open — fine for 2 people)
