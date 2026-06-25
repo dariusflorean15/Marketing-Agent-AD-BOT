@@ -10,6 +10,8 @@ export default function SummaryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [slackMsg, setSlackMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function generate() {
     setLoading(true);
@@ -37,6 +39,26 @@ export default function SummaryPage() {
     }
   }
 
+  async function sendSlack() {
+    setSending(true);
+    setSlackMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/digest/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `API returned ${res.status}`);
+      }
+      setSlackMsg({ ok: true, text: "Sent to Slack ✓" });
+    } catch (e) {
+      setSlackMsg({ ok: false, text: e instanceof Error ? e.message : "Failed to send" });
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function copy() {
     if (!summary) return;
     try {
@@ -56,7 +78,7 @@ export default function SummaryPage() {
         feedback. Copy it into an email or Slack to share with the team.
       </p>
 
-      <div className="mt-6 flex items-center gap-4">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <button
           onClick={generate}
           disabled={loading}
@@ -64,8 +86,18 @@ export default function SummaryPage() {
         >
           {loading ? "Writing…" : summary ? "Regenerate" : "Generate summary"}
         </button>
+        <button
+          onClick={sendSlack}
+          disabled={sending}
+          className="rounded-lg border border-slate-300 px-5 py-2.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {sending ? "Sending…" : "Send to Slack"}
+        </button>
         {generatedAt && !loading && <span className="text-sm text-slate-400">Generated {generatedAt}</span>}
       </div>
+      {slackMsg && (
+        <p className={`mt-3 text-sm ${slackMsg.ok ? "text-green-600" : "text-red-600"}`}>{slackMsg.text}</p>
+      )}
 
       {error && <p className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 

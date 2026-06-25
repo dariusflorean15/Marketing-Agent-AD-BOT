@@ -44,6 +44,94 @@ function goalMap(): Record<string, CampaignGoal> {
   }
 }
 
+// Builds the weekly executive summary (campaigns + scores + trend + feedback → Claude).
+async function composeDigest(): Promise<string> {
+  const { campaigns } = await getAllCampaigns();
+
+  let prev: Record<string, number> = {};
+  try {
+    prev = readPreviousCtrMap(7);
+  } catch {
+    /* no history yet */
+  }
+  const extras: Record<string, ScoringExtras> = Object.fromEntries(
+    Object.entries(prev).map(([id, ctr]) => [id, { previousCtr: ctr }])
+  );
+  const scored = scoreCampaigns(campaigns, extras, {}, goalMap());
+
+  const ctxCampaigns = campaigns.map((c) => {
+    const s = scored.find((x) => x.campaignId === c.campaignId);
+    const p = prev[c.campaignId];
+    return {
+      campaignName: c.campaignName,
+      platform: c.platform,
+      spend: c.spend,
+      conversions: c.conversions,
+      conversionValue: c.conversionValue,
+      roas: c.roas,
+      ctr: c.ctr,
+      cpa: c.cpa,
+      score: s?.score,
+      verdict: s?.verdict,
+      issues: s?.penalties.map((x) => x.rule) ?? [],
+      ctrChangePctVs7dAgo: p ? Math.round(((c.ctr - p) / p) * 100) : null,
+    };
+  });
+
+  let feedback: { campaign: string; rating: string; note: string }[] = [];
+  try {
+    feedback = readFeedback(20).map((f) => ({ campaign: f.campaignName, rating: f.rating, note: f.note }));
+  } catch {
+    /* feedback optional */
+  }
+
+  return writeDigest(JSON.stringify({ campaigns: ctxCampaigns, feedback }, null, 2));
+}
+
+// Posts a message to Slack via an incoming webhook (SLACK_WEBHOOK_URL).
+async function sendToSlack(text: string): Promise<void> {
+  const url = process.env.SLACK_WEBHOOK_URL;
+  if (!url) throw new Error("SLACK_WEBHOOK_URL is not set — add your Slack incoming webhook to enable sending.");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`Slack webhook returned ${res.status}`);
+}
+
+// Schedules the digest to auto-send weekly (default Monday 08:00 UTC) when a webhook is set.
+function scheduleWeeklyDigest(): void {
+  if (!process.env.SLACK_WEBHOOK_URL) return;
+  const day = Number(process.env.DIGEST_DAY ?? 1); // 0=Sun … 1=Mon
+  const hour = Number(process.env.DIGEST_HOUR ?? 8); // UTC hour
+
+  const msUntilNext = () => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(hour, 0, 0, 0);
+    let days = (day - now.getUTCDay() + 7) % 7;
+    if (days === 0 && next <= now) days = 7;
+    next.setUTCDate(now.getUTCDate() + days);
+    return next.getTime() - now.getTime();
+  };
+
+  const arm = () => {
+    setTimeout(async () => {
+      try {
+        const summary = await composeDigest();
+        await sendToSlack(`*Weekly Campaign Health Summary*\n\n${summary}`);
+        console.log("📤 Weekly digest sent to Slack.");
+      } catch (err) {
+        console.error("⚠️ weekly digest send failed:", err);
+      }
+      arm();
+    }, msUntilNext());
+  };
+  arm();
+  console.log(`🗓️ Weekly digest scheduled (day ${day}, ${hour}:00 UTC).`);
+}
+
 app.get("/", (_req, res) => {
   res.json({
     service: "Marketing Agent AD BOT — API",
@@ -59,6 +147,7 @@ app.get("/", (_req, res) => {
       "GET /api/goals",
       "POST /api/goals",
       "POST /api/digest",
+      "POST /api/digest/send",
     ],
   });
 });
@@ -277,51 +366,25 @@ app.post("/api/goals", (req, res) => {
 // Claude-written weekly executive summary from campaigns + scores + trend + feedback.
 app.post("/api/digest", async (_req, res) => {
   try {
-    const { campaigns } = await getAllCampaigns();
-
-    let prev: Record<string, number> = {};
-    try {
-      prev = readPreviousCtrMap(7);
-    } catch {
-      /* no history yet */
-    }
-    const extras: Record<string, ScoringExtras> = Object.fromEntries(
-      Object.entries(prev).map(([id, ctr]) => [id, { previousCtr: ctr }])
-    );
-    const scored = scoreCampaigns(campaigns, extras, {}, goalMap());
-
-    const ctxCampaigns = campaigns.map((c) => {
-      const s = scored.find((x) => x.campaignId === c.campaignId);
-      const p = prev[c.campaignId];
-      return {
-        campaignName: c.campaignName,
-        platform: c.platform,
-        spend: c.spend,
-        conversions: c.conversions,
-        conversionValue: c.conversionValue,
-        roas: c.roas,
-        ctr: c.ctr,
-        cpa: c.cpa,
-        score: s?.score,
-        verdict: s?.verdict,
-        issues: s?.penalties.map((x) => x.rule) ?? [],
-        ctrChangePctVs7dAgo: p ? Math.round(((c.ctr - p) / p) * 100) : null,
-      };
-    });
-
-    let feedback: { campaign: string; rating: string; note: string }[] = [];
-    try {
-      feedback = readFeedback(20).map((f) => ({ campaign: f.campaignName, rating: f.rating, note: f.note }));
-    } catch {
-      /* feedback optional */
-    }
-
-    const summary = await writeDigest(JSON.stringify({ campaigns: ctxCampaigns, feedback }, null, 2));
+    const summary = await composeDigest();
     const response: DigestResponse = { summary, generatedAt: new Date().toISOString() };
     res.json(response);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ digest failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Generates the digest and posts it to Slack now (used by the "Send to Slack" button).
+app.post("/api/digest/send", async (_req, res) => {
+  try {
+    const summary = await composeDigest();
+    await sendToSlack(`*Weekly Campaign Health Summary*\n\n${summary}`);
+    res.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ digest send failed:", message);
     res.status(500).json({ error: message });
   }
 });
@@ -335,6 +398,8 @@ try {
 } catch (err) {
   console.error("⚠️ startup seed skipped:", err);
 }
+
+scheduleWeeklyDigest();
 
 app.listen(PORT, () => {
   console.log(`✅ api-server running at http://localhost:${PORT}`);
