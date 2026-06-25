@@ -123,7 +123,7 @@ export default function TrendsPage() {
             const c = change(s.snapshots, metric);
             const ctrChange = change(s.snapshots, "ctr");
             const ctrFalling = ctrChange !== null && ctrChange.pct < -0.25;
-            const up = c !== null && c.pct >= 0;
+            const rounded = c ? Math.round(c.pct * 100) : 0;
             return (
               <div key={s.campaignId} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -144,9 +144,12 @@ export default function TrendsPage() {
                   <span className="text-2xl font-bold" style={{ color: m.color }}>
                     {c ? m.format(c.latest) : "—"}
                   </span>
-                  {c && (
-                    <span className={`text-sm font-medium ${up ? "text-green-600" : "text-red-600"}`}>
-                      {up ? "▲" : "▼"} {Math.abs(c.pct * 100).toFixed(0)}% vs 7d ago
+                  {c && rounded === 0 && (
+                    <span className="text-sm font-medium text-slate-400">±0% vs 7d ago</span>
+                  )}
+                  {c && rounded !== 0 && (
+                    <span className={`text-sm font-medium ${rounded > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {rounded > 0 ? "▲" : "▼"} {Math.abs(rounded)}% vs 7d ago
                     </span>
                   )}
                 </div>

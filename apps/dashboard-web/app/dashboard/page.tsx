@@ -210,6 +210,46 @@ function CampaignDrawer({
   );
 }
 
+type SortKey =
+  | "name"
+  | "score"
+  | "spend"
+  | "impressions"
+  | "clicks"
+  | "ctr"
+  | "cpc"
+  | "conversions"
+  | "cpa";
+
+function SortHeader({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: "asc" | "desc";
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortKey === k;
+  return (
+    <th
+      onClick={() => onSort(k)}
+      className={`cursor-pointer select-none px-4 py-3 hover:text-slate-600 ${
+        align === "right" ? "text-right" : "text-left"
+      } ${active ? "text-slate-700" : ""}`}
+    >
+      {label}
+      {active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+    </th>
+  );
+}
+
 export default function OverviewPage() {
   const [data, setData] = useState<CampaignsResponse | null>(null);
   const [scores, setScores] = useState<Record<string, ScoredCampaign>>({});
@@ -282,6 +322,36 @@ export default function OverviewPage() {
     return { totalSpend, totalConversions, blendedCpa, avgScore, counts };
   }, [data, scores]);
 
+  const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [filter, setFilter] = useState<"all" | Verdict>("all");
+
+  function toggleSort(k: SortKey) {
+    if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(k);
+      setSortDir(k === "name" ? "asc" : "desc");
+    }
+  }
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    let cs = data.campaigns;
+    if (filter !== "all") cs = cs.filter((c) => scores[c.campaignId]?.verdict === filter);
+    const val = (c: CampaignMetrics): number | string =>
+      sortKey === "name"
+        ? c.campaignName.toLowerCase()
+        : sortKey === "score"
+        ? scores[c.campaignId]?.score ?? -1
+        : (c[sortKey] as number);
+    return [...cs].sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [data, scores, sortKey, sortDir, filter]);
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -322,25 +392,42 @@ export default function OverviewPage() {
         </div>
       )}
 
+      {data && data.campaigns.length > 0 && (
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-slate-400">Filter:</span>
+          {(["all", "critical", "warning", "healthy"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
+                filter === f ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+
       {data && (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-4 py-3">Campaign</th>
-                <th className="px-4 py-3">Platform</th>
-                <th className="px-4 py-3">Health</th>
-                <th className="px-4 py-3 text-right">Spend</th>
-                <th className="px-4 py-3 text-right">Impressions</th>
-                <th className="px-4 py-3 text-right">Clicks</th>
-                <th className="px-4 py-3 text-right">CTR</th>
-                <th className="px-4 py-3 text-right">CPC</th>
-                <th className="px-4 py-3 text-right">Conv.</th>
-                <th className="px-4 py-3 text-right">CPA</th>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                <SortHeader label="Campaign" k="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-4 py-3 text-left">Platform</th>
+                <SortHeader label="Health" k="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Spend" k="spend" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Impressions" k="impressions" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Clicks" k="clicks" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="CTR" k="ctr" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="CPC" k="cpc" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Conv." k="conversions" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="CPA" k="cpa" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               </tr>
             </thead>
             <tbody>
-              {data.campaigns.map((c) => {
+              {rows.map((c) => {
                 const s = scores[c.campaignId];
                 const ctrFalling = s?.penalties?.some((p) => p.rule === "ctr-drop");
                 return (
@@ -380,10 +467,12 @@ export default function OverviewPage() {
                   </tr>
                 );
               })}
-              {data.campaigns.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
-                    No campaigns found in the last 7 days.
+                    {filter === "all"
+                      ? "No campaigns found in the last 7 days."
+                      : `No ${filter} campaigns.`}
                   </td>
                 </tr>
               )}
