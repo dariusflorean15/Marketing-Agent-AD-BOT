@@ -33,9 +33,15 @@ export async function fetchGoogleCampaigns(): Promise<CampaignMetrics[]> {
     developer_token: clean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN),
   });
 
+  // When the developer token lives on a Manager (MCC) account but we query a
+  // client account underneath it, the API requires login_customer_id = the
+  // manager's ID. Set GOOGLE_ADS_LOGIN_CUSTOMER_ID to that manager account.
+  const loginCustomerId = clean(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g, "");
+
   const customer = client.Customer({
     customer_id: clean(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, ""),
     refresh_token: clean(process.env.GOOGLE_ADS_REFRESH_TOKEN),
+    ...(loginCustomerId ? { login_customer_id: loginCustomerId } : {}),
   });
 
   const rows = await customer.query(`
