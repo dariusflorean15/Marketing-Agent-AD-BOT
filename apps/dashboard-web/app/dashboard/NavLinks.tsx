@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/alerts", label: "Alerts" },
   { href: "/dashboard/trends", label: "Trends" },
+  { href: "/dashboard/feedback", label: "Feedback" },
   { href: "/dashboard/chat-analyst", label: "Chat Analyst" },
 ];
 
