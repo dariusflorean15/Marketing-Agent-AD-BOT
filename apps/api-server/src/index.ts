@@ -250,6 +250,8 @@ app.post("/api/digest", async (_req, res) => {
         platform: c.platform,
         spend: c.spend,
         conversions: c.conversions,
+        conversionValue: c.conversionValue,
+        roas: c.roas,
         ctr: c.ctr,
         cpa: c.cpa,
         score: s?.score,

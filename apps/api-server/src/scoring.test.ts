@@ -22,6 +22,8 @@ function campaign(overrides: Partial<CampaignMetrics> = {}): CampaignMetrics {
     ctr: 0.03,
     cpc: 0.17,
     cpa: 10,
+    conversionValue: 2500,
+    roas: 5,
     dateRangeStart: "2026-06-01",
     dateRangeEnd: "2026-06-07",
     ...overrides,
@@ -105,6 +107,29 @@ test("a large zero-conversion spend is severe and critical on its own", () => {
   assert.equal(p?.penalty, PENALTIES.zeroConvSevere);
   assert.equal(r.score, 100 - PENALTIES.zeroConvSevere); // 35
   assert.equal(r.verdict, "critical");
+});
+
+test("low ROAS with revenue applies the roas-low penalty", () => {
+  const r = scoreCampaign(
+    campaign({ conversions: 10, conversionValue: 600, roas: 0.8, spend: 750, cpa: 8 }),
+    ctx(10)
+  );
+  assert.ok(r.penalties.some((p) => p.rule === "roas-low"));
+  assert.equal(r.score, 100 - PENALTIES.roasLow);
+});
+
+test("healthy ROAS is fine, and missing revenue data skips the ROAS rule", () => {
+  const healthy = scoreCampaign(
+    campaign({ conversions: 10, conversionValue: 2000, roas: 4, spend: 500, cpa: 8 }),
+    ctx(10)
+  );
+  assert.ok(!healthy.penalties.some((p) => p.rule === "roas-low"));
+
+  const noRevenue = scoreCampaign(
+    campaign({ conversions: 10, conversionValue: 0, roas: 0, spend: 500, cpa: 8 }),
+    ctx(10)
+  );
+  assert.ok(!noRevenue.penalties.some((p) => p.rule === "roas-low"));
 });
 
 test("Meta frequency above the cap applies the frequency penalty", () => {

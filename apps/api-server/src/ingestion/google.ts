@@ -51,7 +51,8 @@ export async function fetchGoogleCampaigns(): Promise<CampaignMetrics[]> {
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
-      metrics.conversions
+      metrics.conversions,
+      metrics.conversions_value
     FROM campaign
     WHERE segments.date DURING LAST_7_DAYS
       AND campaign.status = 'ENABLED'
@@ -62,6 +63,7 @@ export async function fetchGoogleCampaigns(): Promise<CampaignMetrics[]> {
     const impressions = Number(row.metrics?.impressions ?? 0);
     const clicks = Number(row.metrics?.clicks ?? 0);
     const conversions = Number(row.metrics?.conversions ?? 0);
+    const conversionValue = Number(row.metrics?.conversions_value ?? 0);
     return {
       campaignId: `google-${row.campaign?.id}`,
       campaignName: String(row.campaign?.name ?? row.campaign?.id),
@@ -73,6 +75,8 @@ export async function fetchGoogleCampaigns(): Promise<CampaignMetrics[]> {
       ctr: impressions > 0 ? clicks / impressions : 0,
       cpc: clicks > 0 ? spend / clicks : 0,
       cpa: conversions > 0 ? spend / conversions : 0,
+      conversionValue,
+      roas: spend > 0 ? conversionValue / spend : 0,
       dateRangeStart: isoDaysAgo(7),
       dateRangeEnd: isoDaysAgo(0),
     };

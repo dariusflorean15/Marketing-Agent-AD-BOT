@@ -10,6 +10,7 @@ export const THRESHOLDS = {
   zeroConvSpend: 50, // zero conversions while spending more than this → warning
   zeroConvSevereSpend: 500, // zero conversions while spending more than this → critical
   frequencyCap: 4, // Meta frequency above this means ad fatigue
+  roasTarget: 2, // revenue per $1 spent below this (when revenue is tracked) is weak
 } as const;
 
 export const PENALTIES = {
@@ -19,6 +20,7 @@ export const PENALTIES = {
   zeroConv: 40, // meaningful spend, no conversions → warning on its own
   zeroConvSevere: 65, // large spend, no conversions → critical on its own
   frequency: 10,
+  roasLow: 20, // converting but unprofitable / thin return
 } as const;
 
 // Verdict bands: >=70 healthy, 40-69 warning, <40 critical.
@@ -131,6 +133,17 @@ export function scoreCampaign(
       rule: "frequency",
       penalty: PENALTIES.frequency,
       detail: `Frequency ${extras.frequency.toFixed(1)} exceeds ${THRESHOLDS.frequencyCap}; widen the audience to reduce fatigue.`,
+    });
+  }
+
+  // Rule 6: converting but the return on ad spend is weak (only when revenue is tracked).
+  if (campaign.conversions > 0 && campaign.conversionValue > 0 && campaign.roas < THRESHOLDS.roasTarget) {
+    penalties.push({
+      rule: "roas-low",
+      penalty: PENALTIES.roasLow,
+      detail:
+        `ROAS ${campaign.roas.toFixed(2)}x is below the ${THRESHOLDS.roasTarget}x target` +
+        (campaign.roas < 1 ? " — the campaign is losing money; rework targeting/offer or pause." : "; tighten targeting to improve return."),
     });
   }
 

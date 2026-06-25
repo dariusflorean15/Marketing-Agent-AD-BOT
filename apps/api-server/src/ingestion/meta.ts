@@ -15,6 +15,7 @@ interface MetaInsightRow {
   impressions: string;
   clicks: string;
   actions?: { action_type: string; value: string }[];
+  action_values?: { action_type: string; value: string }[];
   date_start: string;
   date_stop: string;
 }
@@ -27,7 +28,7 @@ const CONVERSION_ACTIONS = new Set([
   "offsite_conversion.fb_pixel_lead",
 ]);
 
-function countConversions(actions: MetaInsightRow["actions"]): number {
+function sumConversionActions(actions?: { action_type: string; value: string }[]): number {
   if (!actions) return 0;
   return actions
     .filter((a) => CONVERSION_ACTIONS.has(a.action_type))
@@ -45,7 +46,7 @@ export async function fetchMetaCampaigns(): Promise<CampaignMetrics[]> {
   url.searchParams.set("date_preset", "last_7d");
   url.searchParams.set(
     "fields",
-    "campaign_id,campaign_name,spend,impressions,clicks,actions"
+    "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values"
   );
   url.searchParams.set("limit", "100");
   url.searchParams.set("access_token", token);
@@ -64,7 +65,8 @@ export async function fetchMetaCampaigns(): Promise<CampaignMetrics[]> {
     const spend = Number(row.spend || 0);
     const impressions = Number(row.impressions || 0);
     const clicks = Number(row.clicks || 0);
-    const conversions = countConversions(row.actions);
+    const conversions = sumConversionActions(row.actions);
+    const conversionValue = sumConversionActions(row.action_values);
     return {
       campaignId: `meta-${row.campaign_id}`,
       campaignName: row.campaign_name,
@@ -76,6 +78,8 @@ export async function fetchMetaCampaigns(): Promise<CampaignMetrics[]> {
       ctr: impressions > 0 ? clicks / impressions : 0,
       cpc: clicks > 0 ? spend / clicks : 0,
       cpa: conversions > 0 ? spend / conversions : 0,
+      conversionValue,
+      roas: spend > 0 ? conversionValue / spend : 0,
       dateRangeStart: row.date_start,
       dateRangeEnd: row.date_stop,
     };

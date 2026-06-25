@@ -240,6 +240,8 @@ function CampaignDrawer({
             <Stat label="CPC" value={eur(campaign.cpc)} />
             <Stat label="Conversions" value={String(campaign.conversions)} />
             <Stat label="CPA" value={campaign.conversions > 0 ? eur(campaign.cpa) : "—"} />
+            <Stat label="Conv. value" value={eur(campaign.conversionValue)} />
+            <Stat label="ROAS" value={roasText(campaign)} />
           </div>
 
           {scored?.penalties && scored.penalties.length > 0 && (
@@ -282,7 +284,11 @@ type SortKey =
   | "ctr"
   | "cpc"
   | "conversions"
-  | "cpa";
+  | "cpa"
+  | "roas";
+
+const roasText = (c: { conversionValue: number; roas: number }) =>
+  c.conversionValue > 0 ? `${c.roas.toFixed(2)}×` : "—";
 
 function SortHeader({
   label,
@@ -383,7 +389,9 @@ export default function OverviewPage() {
     if (!data) return null;
     const totalSpend = data.campaigns.reduce((s, c) => s + c.spend, 0);
     const totalConversions = data.campaigns.reduce((s, c) => s + c.conversions, 0);
+    const totalValue = data.campaigns.reduce((s, c) => s + c.conversionValue, 0);
     const blendedCpa = totalConversions > 0 ? totalSpend / totalConversions : null;
+    const blendedRoas = totalSpend > 0 && totalValue > 0 ? totalValue / totalSpend : null;
     const scored = data.campaigns.map((c) => scores[c.campaignId]).filter(Boolean) as ScoredCampaign[];
     const avgScore =
       scored.length > 0 ? Math.round(scored.reduce((s, r) => s + r.score, 0) / scored.length) : null;
@@ -391,7 +399,7 @@ export default function OverviewPage() {
       (acc, r) => ({ ...acc, [r.verdict]: acc[r.verdict] + 1 }),
       { healthy: 0, warning: 0, critical: 0 } as Record<Verdict, number>
     );
-    return { totalSpend, totalConversions, blendedCpa, avgScore, counts };
+    return { totalSpend, totalConversions, blendedCpa, blendedRoas, avgScore, counts };
   }, [data, scores]);
 
   const [sortKey, setSortKey] = useState<SortKey>("score");
@@ -456,12 +464,25 @@ export default function OverviewPage() {
       {!data && !error && <p className="mt-6 text-slate-400">Loading campaigns…</p>}
 
       {summary && (
-        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
           <SummaryCard label="Total spend" value={eur(summary.totalSpend)} />
           <SummaryCard label="Conversions" value={summary.totalConversions.toLocaleString()} />
           <SummaryCard
             label="Blended CPA"
             value={summary.blendedCpa !== null ? eur(summary.blendedCpa) : "—"}
+          />
+          <SummaryCard
+            label="Blended ROAS"
+            value={summary.blendedRoas !== null ? `${summary.blendedRoas.toFixed(2)}×` : "—"}
+            valueClass={
+              summary.blendedRoas !== null
+                ? summary.blendedRoas >= 2
+                  ? "text-green-600"
+                  : summary.blendedRoas >= 1
+                  ? "text-yellow-600"
+                  : "text-red-600"
+                : ""
+            }
           />
           <SummaryCard
             label="Avg health"
@@ -508,6 +529,7 @@ export default function OverviewPage() {
                 <SortHeader label="CPC" k="cpc" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Conv." k="conversions" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="CPA" k="cpa" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="ROAS" k="roas" align="right" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               </tr>
             </thead>
             <tbody>
@@ -548,12 +570,13 @@ export default function OverviewPage() {
                     <td className="px-4 py-3 text-right">{eur(c.cpc)}</td>
                     <td className="px-4 py-3 text-right">{c.conversions}</td>
                     <td className="px-4 py-3 text-right">{c.conversions > 0 ? eur(c.cpa) : "—"}</td>
+                    <td className="px-4 py-3 text-right">{roasText(c)}</td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                     {filter === "all"
                       ? "No campaigns found in the last 7 days."
                       : `No ${filter} campaigns.`}

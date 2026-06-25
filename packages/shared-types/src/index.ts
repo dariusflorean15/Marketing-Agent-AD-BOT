@@ -17,6 +17,8 @@ export interface CampaignMetrics {
   ctr: number; // clicks / impressions
   cpc: number; // spend / clicks
   cpa: number; // spend / conversions
+  conversionValue: number; // revenue attributed to conversions (account currency)
+  roas: number; // conversionValue / spend (return on ad spend)
   dateRangeStart: string; // ISO date
   dateRangeEnd: string; // ISO date
 }
