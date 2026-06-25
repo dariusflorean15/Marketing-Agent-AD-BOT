@@ -5,11 +5,12 @@ import type {
   AnalyzeRunResponse,
   ChatRequest,
   ChatResponse,
+  DigestResponse,
   FeedbackListResponse,
   FeedbackRequest,
   HistoryResponse,
 } from "@adbot/shared-types";
-import { analyzeWithClaude, askAnalyst } from "./claude.js";
+import { analyzeWithClaude, askAnalyst, writeDigest } from "./claude.js";
 import { getAllCampaigns } from "./ingestion/index.js";
 import { scoreCampaigns, type ScoringExtras } from "./scoring.js";
 import {
@@ -41,6 +42,7 @@ app.get("/", (_req, res) => {
       "POST /api/chat",
       "GET /api/feedback",
       "POST /api/feedback",
+      "POST /api/digest",
     ],
   });
 });
@@ -220,6 +222,56 @@ app.get("/api/feedback", (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ feedback list failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Claude-written weekly executive summary from campaigns + scores + trend + feedback.
+app.post("/api/digest", async (_req, res) => {
+  try {
+    const { campaigns } = await getAllCampaigns();
+
+    let prev: Record<string, number> = {};
+    try {
+      prev = readPreviousCtrMap(7);
+    } catch {
+      /* no history yet */
+    }
+    const extras: Record<string, ScoringExtras> = Object.fromEntries(
+      Object.entries(prev).map(([id, ctr]) => [id, { previousCtr: ctr }])
+    );
+    const scored = scoreCampaigns(campaigns, extras);
+
+    const ctxCampaigns = campaigns.map((c) => {
+      const s = scored.find((x) => x.campaignId === c.campaignId);
+      const p = prev[c.campaignId];
+      return {
+        campaignName: c.campaignName,
+        platform: c.platform,
+        spend: c.spend,
+        conversions: c.conversions,
+        ctr: c.ctr,
+        cpa: c.cpa,
+        score: s?.score,
+        verdict: s?.verdict,
+        issues: s?.penalties.map((x) => x.rule) ?? [],
+        ctrChangePctVs7dAgo: p ? Math.round(((c.ctr - p) / p) * 100) : null,
+      };
+    });
+
+    let feedback: { campaign: string; rating: string; note: string }[] = [];
+    try {
+      feedback = readFeedback(20).map((f) => ({ campaign: f.campaignName, rating: f.rating, note: f.note }));
+    } catch {
+      /* feedback optional */
+    }
+
+    const summary = await writeDigest(JSON.stringify({ campaigns: ctxCampaigns, feedback }, null, 2));
+    const response: DigestResponse = { summary, generatedAt: new Date().toISOString() };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ digest failed:", message);
     res.status(500).json({ error: message });
   }
 });

@@ -118,3 +118,9 @@ export interface FeedbackEntry {
 export interface FeedbackListResponse {
   feedback: FeedbackEntry[];
 }
+
+/** Response shape of POST /api/digest — a Claude-written executive summary. */
+export interface DigestResponse {
+  summary: string;
+  generatedAt: string; // ISO datetime
+}
