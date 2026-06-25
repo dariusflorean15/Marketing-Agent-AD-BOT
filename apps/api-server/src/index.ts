@@ -5,6 +5,8 @@ import type {
   AnalyzeRunResponse,
   ChatRequest,
   ChatResponse,
+  FeedbackListResponse,
+  FeedbackRequest,
   HistoryResponse,
 } from "@adbot/shared-types";
 import { analyzeWithClaude, askAnalyst } from "./claude.js";
@@ -12,6 +14,8 @@ import { getAllCampaigns } from "./ingestion/index.js";
 import { scoreCampaigns, type ScoringExtras } from "./scoring.js";
 import {
   captureDailySnapshot,
+  insertFeedback,
+  readFeedback,
   readHistory,
   readPreviousCtrMap,
   seedIfEmpty,
@@ -35,6 +39,8 @@ app.get("/", (_req, res) => {
       "POST /api/analyze/run",
       "POST /api/analyze/score",
       "POST /api/chat",
+      "GET /api/feedback",
+      "POST /api/feedback",
     ],
   });
 });
@@ -153,12 +159,67 @@ app.post("/api/chat", async (req, res) => {
       };
     });
 
-    const reply = await askAnalyst(valid, JSON.stringify(context, null, 2));
+    // Include the team's recent thumbs up/down so Claude adapts to their judgment.
+    let feedbackBlock = "";
+    try {
+      const fb = readFeedback(20);
+      if (fb.length > 0) {
+        feedbackBlock =
+          "\n\nTEAM FEEDBACK ON PAST RECOMMENDATIONS (most recent first) — weight these when advising:\n" +
+          fb
+            .map(
+              (f) =>
+                `- [${f.rating === "up" ? "👍 agreed" : "👎 disagreed"}] ${f.campaignName}` +
+                (f.note ? ` — note: "${f.note}"` : "") +
+                (f.recommendation ? ` (re: "${f.recommendation}")` : "")
+            )
+            .join("\n");
+      }
+    } catch {
+      /* feedback is optional context */
+    }
+
+    const reply = await askAnalyst(valid, JSON.stringify(context, null, 2) + feedbackBlock);
     const response: ChatResponse = { reply };
     res.json(response);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ chat failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Records a thumbs up/down (with optional note) on a campaign's recommendation.
+app.post("/api/feedback", (req, res) => {
+  try {
+    const body = req.body as FeedbackRequest;
+    if (!body?.campaignId || (body.rating !== "up" && body.rating !== "down")) {
+      res.status(400).json({ error: "campaignId and rating ('up'|'down') are required." });
+      return;
+    }
+    const id = insertFeedback({
+      campaignId: body.campaignId,
+      campaignName: String(body.campaignName ?? body.campaignId),
+      rating: body.rating,
+      note: typeof body.note === "string" ? body.note : "",
+      recommendation: typeof body.recommendation === "string" ? body.recommendation : "",
+    });
+    res.json({ ok: true, id });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ feedback save failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// Recent feedback, newest first.
+app.get("/api/feedback", (_req, res) => {
+  try {
+    const response: FeedbackListResponse = { feedback: readFeedback(100) };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ feedback list failed:", message);
     res.status(500).json({ error: message });
   }
 });

@@ -7,6 +7,7 @@ import type {
   CampaignMetrics,
   CampaignSnapshot,
   CampaignsResponse,
+  FeedbackRating,
   HistoryResponse,
   PlatformSourceInfo,
   Verdict,
@@ -102,6 +103,63 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg bg-slate-50 p-3">
       <p className="text-xs text-slate-400">{label}</p>
       <p className="font-semibold">{value}</p>
+    </div>
+  );
+}
+
+/** Thumbs up/down (+ optional note) on a recommendation; posts to /api/feedback. */
+function FeedbackWidget({
+  campaignId,
+  campaignName,
+  recommendation,
+}: {
+  campaignId: string;
+  campaignName: string;
+  recommendation: string;
+}) {
+  const [sent, setSent] = useState<FeedbackRating | null>(null);
+  const [note, setNote] = useState("");
+
+  async function submit(rating: FeedbackRating) {
+    setSent(rating);
+    try {
+      await fetch(`${API_URL}/api/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, campaignName, rating, note, recommendation }),
+      });
+    } catch {
+      /* best-effort; UI already shows thanks */
+    }
+  }
+
+  if (sent) {
+    return (
+      <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
+        ✓ Feedback saved — Claude will weigh it in the Chat Analyst next time.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-slate-200 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-500">Was this useful?</span>
+        <div className="flex gap-1">
+          <button onClick={() => submit("up")} className="rounded px-2 py-1 text-sm hover:bg-green-50" aria-label="Useful">
+            👍
+          </button>
+          <button onClick={() => submit("down")} className="rounded px-2 py-1 text-sm hover:bg-red-50" aria-label="Not useful">
+            👎
+          </button>
+        </div>
+      </div>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional note (why?) — included next time"
+        className="mt-2 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
+      />
     </div>
   );
 }
@@ -202,6 +260,11 @@ function CampaignDrawer({
             <div>
               <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Recommendation</h4>
               <p className="text-sm text-slate-700">{scored.recommendation}</p>
+              <FeedbackWidget
+                campaignId={campaign.campaignId}
+                campaignName={campaign.campaignName}
+                recommendation={scored.recommendation}
+              />
             </div>
           )}
         </div>

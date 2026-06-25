@@ -90,3 +90,31 @@ export interface ChatRequest {
 export interface ChatResponse {
   reply: string;
 }
+
+/** A thumbs up/down on a campaign's recommendation. */
+export type FeedbackRating = "up" | "down";
+
+/** Request body for POST /api/feedback */
+export interface FeedbackRequest {
+  campaignId: string;
+  campaignName: string;
+  rating: FeedbackRating;
+  note?: string;
+  recommendation?: string;
+}
+
+/** A stored feedback entry. */
+export interface FeedbackEntry {
+  id: number;
+  campaignId: string;
+  campaignName: string;
+  rating: FeedbackRating;
+  note: string;
+  recommendation: string;
+  createdAt: string; // ISO datetime
+}
+
+/** Response shape of GET /api/feedback */
+export interface FeedbackListResponse {
+  feedback: FeedbackEntry[];
+}

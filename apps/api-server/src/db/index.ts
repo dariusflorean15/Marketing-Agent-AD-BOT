@@ -6,6 +6,9 @@ import type {
   CampaignsResponse,
   CampaignSnapshot,
   DataSource,
+  FeedbackEntry,
+  FeedbackRating,
+  FeedbackRequest,
   Platform,
 } from "@adbot/shared-types";
 import { latestSnapshotDate, selectPreviousCtrMap } from "./history.js";
@@ -37,6 +40,15 @@ export function getDb(): Database.Database {
       cpa           REAL    NOT NULL,
       source        TEXT    NOT NULL,
       PRIMARY KEY (snapshot_date, campaign_id)
+    );
+    CREATE TABLE IF NOT EXISTS feedback (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id    TEXT NOT NULL,
+      campaign_name  TEXT NOT NULL,
+      rating         TEXT NOT NULL,
+      note           TEXT NOT NULL DEFAULT '',
+      recommendation TEXT NOT NULL DEFAULT '',
+      created_at     TEXT NOT NULL
     );
   `);
   return db;
@@ -178,4 +190,54 @@ export function readPreviousCtrMap(lagDays = 7): Record<string, number> {
 export function seedIfEmpty(makeRows: () => CampaignSnapshot[]): number {
   if (readHistory().length > 0) return 0;
   return insertSnapshots(makeRows());
+}
+
+// ── Feedback (thumbs up/down on recommendations) ──────────────────────
+
+interface FeedbackRow {
+  id: number;
+  campaign_id: string;
+  campaign_name: string;
+  rating: string;
+  note: string;
+  recommendation: string;
+  created_at: string;
+}
+
+const toFeedback = (r: FeedbackRow): FeedbackEntry => ({
+  id: r.id,
+  campaignId: r.campaign_id,
+  campaignName: r.campaign_name,
+  rating: r.rating as FeedbackRating,
+  note: r.note,
+  recommendation: r.recommendation,
+  createdAt: r.created_at,
+});
+
+/** Records one thumbs up/down (with optional note) and returns the new row id. */
+export function insertFeedback(f: FeedbackRequest): number {
+  const d = getDb();
+  const info = d
+    .prepare(
+      `INSERT INTO feedback (campaign_id, campaign_name, rating, note, recommendation, created_at)
+       VALUES (@campaign_id, @campaign_name, @rating, @note, @recommendation, @created_at)`
+    )
+    .run({
+      campaign_id: f.campaignId,
+      campaign_name: f.campaignName,
+      rating: f.rating,
+      note: f.note ?? "",
+      recommendation: f.recommendation ?? "",
+      created_at: new Date().toISOString(),
+    });
+  return Number(info.lastInsertRowid);
+}
+
+/** Most recent feedback first. */
+export function readFeedback(limit = 50): FeedbackEntry[] {
+  const d = getDb();
+  const rows = d
+    .prepare("SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as FeedbackRow[];
+  return rows.map(toFeedback);
 }
