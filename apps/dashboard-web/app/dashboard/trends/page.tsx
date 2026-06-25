@@ -5,12 +5,13 @@ import type { CampaignSnapshot, HistoryResponse, Platform } from "@adbot/shared-
 import { API_URL } from "@/app/lib/api";
 import { LineChart } from "@/app/lib/LineChart";
 
-type MetricKey = "ctr" | "spend" | "conversions";
+type MetricKey = "ctr" | "spend" | "conversions" | "roas";
 
 const METRICS: Record<MetricKey, { label: string; color: string; format: (n: number) => string }> = {
   ctr: { label: "CTR", color: "#2563eb", format: (n) => `${(n * 100).toFixed(2)}%` },
   spend: { label: "Spend", color: "#d97706", format: (n) => `$${n.toFixed(0)}` },
   conversions: { label: "Conversions", color: "#16a34a", format: (n) => `${Math.round(n)}` },
+  roas: { label: "ROAS", color: "#7c3aed", format: (n) => `${n.toFixed(2)}×` },
 };
 
 const platformLabel = (p: Platform) => (p === "meta" ? "Meta Ads" : "Google Ads");

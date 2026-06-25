@@ -87,6 +87,7 @@ const DRAWER_METRICS = {
   ctr: { label: "CTR", color: "#2563eb", format: (n: number) => `${(n * 100).toFixed(2)}%` },
   spend: { label: "Spend", color: "#d97706", format: (n: number) => `$${n.toFixed(0)}` },
   conversions: { label: "Conversions", color: "#16a34a", format: (n: number) => `${Math.round(n)}` },
+  roas: { label: "ROAS", color: "#7c3aed", format: (n: number) => `${n.toFixed(2)}×` },
 } as const;
 type DrawerMetric = keyof typeof DRAWER_METRICS;
 

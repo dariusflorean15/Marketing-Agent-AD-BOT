@@ -69,6 +69,8 @@ export interface CampaignSnapshot {
   ctr: number;
   cpc: number;
   cpa: number;
+  conversionValue: number;
+  roas: number;
   source: DataSource; // whether this day's numbers were live or mock
 }
 

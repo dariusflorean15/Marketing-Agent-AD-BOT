@@ -93,6 +93,9 @@ export function generateSyntheticHistory(
       const ctr = impressions > 0 ? clicks / impressions : 0;
       const cpc = clicks > 0 ? round2(spend / clicks) : 0;
       const cpa = conversions > 0 ? round2(spend / conversions) : 0;
+      const conversionValue =
+        c.roas > 0 ? round2(spend * c.roas * (1 + 0.1 * noise(`${c.campaignId}|roas|${date}`))) : 0;
+      const roas = spend > 0 ? conversionValue / spend : 0;
 
       rows.push({
         snapshotDate: date,
@@ -106,6 +109,8 @@ export function generateSyntheticHistory(
         ctr,
         cpc,
         cpa,
+        conversionValue,
+        roas,
         source: "mock",
       });
     }

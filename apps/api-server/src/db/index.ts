@@ -38,6 +38,8 @@ export function getDb(): Database.Database {
       ctr           REAL    NOT NULL,
       cpc           REAL    NOT NULL,
       cpa           REAL    NOT NULL,
+      conversion_value REAL NOT NULL DEFAULT 0,
+      roas          REAL    NOT NULL DEFAULT 0,
       source        TEXT    NOT NULL,
       PRIMARY KEY (snapshot_date, campaign_id)
     );
@@ -51,6 +53,13 @@ export function getDb(): Database.Database {
       created_at     TEXT NOT NULL
     );
   `);
+  // Migrate older databases that predate the ROAS columns.
+  for (const col of ["conversion_value", "roas"]) {
+    const exists = (db.prepare("PRAGMA table_info(snapshots)").all() as { name: string }[]).some(
+      (c) => c.name === col
+    );
+    if (!exists) db.exec(`ALTER TABLE snapshots ADD COLUMN ${col} REAL NOT NULL DEFAULT 0`);
+  }
   return db;
 }
 
@@ -62,10 +71,10 @@ function upsertStatement(d: Database.Database) {
   return d.prepare(`
     INSERT INTO snapshots
       (snapshot_date, campaign_id, campaign_name, platform, spend, impressions,
-       clicks, conversions, ctr, cpc, cpa, source)
+       clicks, conversions, ctr, cpc, cpa, conversion_value, roas, source)
     VALUES
       (@snapshot_date, @campaign_id, @campaign_name, @platform, @spend, @impressions,
-       @clicks, @conversions, @ctr, @cpc, @cpa, @source)
+       @clicks, @conversions, @ctr, @cpc, @cpa, @conversion_value, @roas, @source)
     ON CONFLICT(snapshot_date, campaign_id) DO UPDATE SET
       campaign_name = excluded.campaign_name,
       platform      = excluded.platform,
@@ -76,6 +85,8 @@ function upsertStatement(d: Database.Database) {
       ctr           = excluded.ctr,
       cpc           = excluded.cpc,
       cpa           = excluded.cpa,
+      conversion_value = excluded.conversion_value,
+      roas          = excluded.roas,
       source        = excluded.source
   `);
 }
@@ -92,6 +103,8 @@ interface SnapshotRow {
   ctr: number;
   cpc: number;
   cpa: number;
+  conversion_value: number;
+  roas: number;
   source: string;
 }
 
@@ -107,6 +120,8 @@ const toSnapshot = (r: SnapshotRow): CampaignSnapshot => ({
   ctr: r.ctr,
   cpc: r.cpc,
   cpa: r.cpa,
+  conversionValue: r.conversion_value,
+  roas: r.roas,
   source: r.source as DataSource,
 });
 
@@ -122,6 +137,8 @@ const paramsFor = (s: CampaignSnapshot) => ({
   ctr: s.ctr,
   cpc: s.cpc,
   cpa: s.cpa,
+  conversion_value: s.conversionValue,
+  roas: s.roas,
   source: s.source,
 });
 
@@ -157,6 +174,8 @@ export function captureDailySnapshot(
     ctr: c.ctr,
     cpc: c.cpc,
     cpa: c.cpa,
+    conversionValue: c.conversionValue,
+    roas: c.roas,
     source: sources[c.platform]?.source ?? "mock",
   }));
   return insertSnapshots(snapshots);
