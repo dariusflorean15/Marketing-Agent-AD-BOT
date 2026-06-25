@@ -75,11 +75,18 @@ interface ScoreContext {
   zeroConvSpend: number;
 }
 
+/** A campaign's performance targets (subset of CampaignGoal). */
+export interface ScoringGoal {
+  targetRoas?: number;
+  targetCpa?: number;
+}
+
 /** Scores a single campaign against the rule set. */
 export function scoreCampaign(
   campaign: CampaignMetrics,
   ctx: ScoreContext,
-  extras: ScoringExtras = {}
+  extras: ScoringExtras = {},
+  goal: ScoringGoal = {}
 ): CampaignScore {
   const penalties: RulePenalty[] = [];
 
@@ -104,14 +111,24 @@ export function scoreCampaign(
     }
   }
 
-  // Rule 3: CPA far above the account average (needs a meaningful baseline).
-  if (ctx.avgCpa > 0 && campaign.cpa > 0 && campaign.cpa > THRESHOLDS.cpaMultiple * ctx.avgCpa) {
-    const multiple = campaign.cpa / ctx.avgCpa;
-    penalties.push({
-      rule: "cpa-high",
-      penalty: PENALTIES.cpaHigh,
-      detail: `CPA ${money(campaign.cpa)} is ${multiple.toFixed(1)}x the account average (${money(ctx.avgCpa)}); pause or rework targeting.`,
-    });
+  // Rule 3: CPA — against the campaign's target if one is set, else the account average.
+  if (campaign.conversions > 0 && campaign.cpa > 0) {
+    if (goal.targetCpa && goal.targetCpa > 0) {
+      if (campaign.cpa > goal.targetCpa) {
+        penalties.push({
+          rule: "cpa-over-target",
+          penalty: PENALTIES.cpaHigh,
+          detail: `CPA ${money(campaign.cpa)} is over the ${money(goal.targetCpa)} target; pause or rework targeting.`,
+        });
+      }
+    } else if (ctx.avgCpa > 0 && campaign.cpa > THRESHOLDS.cpaMultiple * ctx.avgCpa) {
+      const multiple = campaign.cpa / ctx.avgCpa;
+      penalties.push({
+        rule: "cpa-high",
+        penalty: PENALTIES.cpaHigh,
+        detail: `CPA ${money(campaign.cpa)} is ${multiple.toFixed(1)}x the account average (${money(ctx.avgCpa)}); pause or rework targeting.`,
+      });
+    }
   }
 
   // Rule 4: spending with nothing to show for it. Scales with how much was wasted —
@@ -136,13 +153,14 @@ export function scoreCampaign(
     });
   }
 
-  // Rule 6: converting but the return on ad spend is weak (only when revenue is tracked).
-  if (campaign.conversions > 0 && campaign.conversionValue > 0 && campaign.roas < THRESHOLDS.roasTarget) {
+  // Rule 6: weak return on ad spend — against the campaign's target ROAS if set, else the default.
+  const roasTarget = goal.targetRoas && goal.targetRoas > 0 ? goal.targetRoas : THRESHOLDS.roasTarget;
+  if (campaign.conversions > 0 && campaign.conversionValue > 0 && campaign.roas < roasTarget) {
     penalties.push({
       rule: "roas-low",
       penalty: PENALTIES.roasLow,
       detail:
-        `ROAS ${campaign.roas.toFixed(2)}x is below the ${THRESHOLDS.roasTarget}x target` +
+        `ROAS ${campaign.roas.toFixed(2)}x is below the ${roasTarget}x target` +
         (campaign.roas < 1 ? " — the campaign is losing money; rework targeting/offer or pause." : "; tighten targeting to improve return."),
     });
   }
@@ -175,11 +193,14 @@ export function scoreCampaign(
 export function scoreCampaigns(
   campaigns: CampaignMetrics[],
   extras: Record<string, ScoringExtras> = {},
-  options: ScoringOptions = {}
+  options: ScoringOptions = {},
+  goals: Record<string, ScoringGoal> = {}
 ): CampaignScore[] {
   const ctx: ScoreContext = {
     avgCpa: accountAverageCpa(campaigns),
     zeroConvSpend: options.zeroConvSpend ?? THRESHOLDS.zeroConvSpend,
   };
-  return campaigns.map((c) => scoreCampaign(c, ctx, extras[c.campaignId] ?? {}));
+  return campaigns.map((c) =>
+    scoreCampaign(c, ctx, extras[c.campaignId] ?? {}, goals[c.campaignId] ?? {})
+  );
 }

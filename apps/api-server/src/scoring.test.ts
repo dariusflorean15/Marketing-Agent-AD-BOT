@@ -132,6 +132,29 @@ test("healthy ROAS is fine, and missing revenue data skips the ROAS rule", () =>
   assert.ok(!noRevenue.penalties.some((p) => p.rule === "roas-low"));
 });
 
+test("a per-campaign target ROAS overrides the default", () => {
+  // ROAS 3x passes the default 2x target, but fails a campaign goal of 5x.
+  const r = scoreCampaign(
+    campaign({ conversions: 10, conversionValue: 1500, roas: 3, spend: 500, cpa: 8 }),
+    ctx(10),
+    {},
+    { targetRoas: 5 }
+  );
+  assert.ok(r.penalties.some((p) => p.rule === "roas-low"));
+});
+
+test("a per-campaign target CPA flags overspend the account average misses", () => {
+  // CPA 15 is under 2x the account average (no cpa-high), but over a 12 target.
+  const r = scoreCampaign(
+    campaign({ conversions: 10, cpa: 15, spend: 150 }),
+    ctx(10),
+    {},
+    { targetCpa: 12 }
+  );
+  assert.ok(r.penalties.some((p) => p.rule === "cpa-over-target"));
+  assert.ok(!r.penalties.some((p) => p.rule === "cpa-high"));
+});
+
 test("Meta frequency above the cap applies the frequency penalty", () => {
   const r = scoreCampaign(campaign({ platform: "meta" }), ctx(10), { frequency: 5 });
   assert.ok(r.penalties.some((p) => p.rule === "frequency"));

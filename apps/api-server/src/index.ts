@@ -3,11 +3,13 @@ import express from "express";
 import cors from "cors";
 import type {
   AnalyzeRunResponse,
+  CampaignGoal,
   ChatRequest,
   ChatResponse,
   DigestResponse,
   FeedbackListResponse,
   FeedbackRequest,
+  GoalsResponse,
   HistoryResponse,
 } from "@adbot/shared-types";
 import { analyzeWithClaude, askAnalyst, writeDigest } from "./claude.js";
@@ -17,9 +19,12 @@ import {
   captureDailySnapshot,
   insertFeedback,
   readFeedback,
+  readGoalMap,
+  readGoals,
   readHistory,
   readPreviousCtrMap,
   seedIfEmpty,
+  upsertGoal,
 } from "./db/index.js";
 import { generateSyntheticHistory } from "./db/history.js";
 import { mockCampaigns } from "./mock-data.js";
@@ -29,6 +34,15 @@ const PORT = Number(process.env.PORT) || 4000;
 
 app.use(cors()); // allow the dashboard (localhost:3000) to call us
 app.use(express.json());
+
+// Saved per-campaign targets, used to make scoring judge against the team's goals.
+function goalMap(): Record<string, CampaignGoal> {
+  try {
+    return readGoalMap();
+  } catch {
+    return {};
+  }
+}
 
 app.get("/", (_req, res) => {
   res.json({
@@ -42,6 +56,8 @@ app.get("/", (_req, res) => {
       "POST /api/chat",
       "GET /api/feedback",
       "POST /api/feedback",
+      "GET /api/goals",
+      "POST /api/goals",
       "POST /api/digest",
     ],
   });
@@ -115,7 +131,7 @@ app.post("/api/analyze/score", async (_req, res) => {
       console.error("⚠️ previous-CTR lookup failed, scoring without it:", dbErr);
     }
 
-    const results = scoreCampaigns(campaigns, extras);
+    const results = scoreCampaigns(campaigns, extras, {}, goalMap());
     const response: AnalyzeRunResponse = { results };
     res.json(response);
   } catch (err) {
@@ -150,7 +166,7 @@ app.post("/api/chat", async (req, res) => {
     } catch {
       /* no history yet — score without trend context */
     }
-    const scored = scoreCampaigns(campaigns, extras);
+    const scored = scoreCampaigns(campaigns, extras, {}, goalMap());
     const context = campaigns.map((c) => {
       const s = scored.find((x) => x.campaignId === c.campaignId);
       return {
@@ -226,6 +242,38 @@ app.get("/api/feedback", (_req, res) => {
   }
 });
 
+// Per-campaign performance targets.
+app.get("/api/goals", (_req, res) => {
+  try {
+    const response: GoalsResponse = { goals: readGoals() };
+    res.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ goals list failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/goals", (req, res) => {
+  try {
+    const body = req.body as CampaignGoal;
+    if (!body?.campaignId) {
+      res.status(400).json({ error: "campaignId is required." });
+      return;
+    }
+    const targetRoas =
+      typeof body.targetRoas === "number" && body.targetRoas > 0 ? body.targetRoas : undefined;
+    const targetCpa =
+      typeof body.targetCpa === "number" && body.targetCpa > 0 ? body.targetCpa : undefined;
+    upsertGoal({ campaignId: body.campaignId, targetRoas, targetCpa });
+    res.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("❌ goal save failed:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
 // Claude-written weekly executive summary from campaigns + scores + trend + feedback.
 app.post("/api/digest", async (_req, res) => {
   try {
@@ -240,7 +288,7 @@ app.post("/api/digest", async (_req, res) => {
     const extras: Record<string, ScoringExtras> = Object.fromEntries(
       Object.entries(prev).map(([id, ctr]) => [id, { previousCtr: ctr }])
     );
-    const scored = scoreCampaigns(campaigns, extras);
+    const scored = scoreCampaigns(campaigns, extras, {}, goalMap());
 
     const ctxCampaigns = campaigns.map((c) => {
       const s = scored.find((x) => x.campaignId === c.campaignId);

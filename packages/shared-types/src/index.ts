@@ -128,3 +128,15 @@ export interface DigestResponse {
   summary: string;
   generatedAt: string; // ISO datetime
 }
+
+/** A per-campaign performance target. Scoring judges against these when set. */
+export interface CampaignGoal {
+  campaignId: string;
+  targetRoas?: number; // desired return on ad spend (e.g. 3 = 3x)
+  targetCpa?: number; // desired max cost per conversion
+}
+
+/** Response shape of GET /api/goals */
+export interface GoalsResponse {
+  goals: CampaignGoal[];
+}

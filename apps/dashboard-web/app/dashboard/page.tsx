@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AnalysisResult,
   AnalyzeRunResponse,
+  CampaignGoal,
   CampaignMetrics,
   CampaignSnapshot,
   CampaignsResponse,
   FeedbackRating,
+  GoalsResponse,
   HistoryResponse,
   PlatformSourceInfo,
   Verdict,
@@ -165,16 +167,98 @@ function FeedbackWidget({
   );
 }
 
+/** Edit a campaign's target ROAS / CPA; saving re-scores against the goals. */
+function GoalEditor({
+  campaignId,
+  goal,
+  onSaved,
+}: {
+  campaignId: string;
+  goal?: CampaignGoal;
+  onSaved: () => void;
+}) {
+  const [roas, setRoas] = useState(goal?.targetRoas?.toString() ?? "");
+  const [cpa, setCpa] = useState(goal?.targetCpa?.toString() ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await fetch(`${API_URL}/api/goals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          targetRoas: roas ? Number(roas) : undefined,
+          targetCpa: cpa ? Number(cpa) : undefined,
+        }),
+      });
+      setSaved(true);
+      onSaved();
+    } catch {
+      /* ignore */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Targets</h4>
+      <div className="flex gap-3">
+        <label className="flex-1 text-xs text-slate-500">
+          Target ROAS (×)
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            value={roas}
+            onChange={(e) => setRoas(e.target.value)}
+            placeholder="e.g. 3"
+            className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </label>
+        <label className="flex-1 text-xs text-slate-500">
+          Target CPA ($)
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={cpa}
+            onChange={(e) => setCpa(e.target.value)}
+            placeholder="e.g. 25"
+            className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </label>
+      </div>
+      <button
+        onClick={save}
+        disabled={saving}
+        className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+      >
+        {saving ? "Saving…" : saved ? "Saved ✓" : "Save targets"}
+      </button>
+      <p className="mt-1 text-xs text-slate-400">Scoring judges this campaign against your targets when set.</p>
+    </div>
+  );
+}
+
 /** Slide-out panel with a campaign's chart, metrics, score breakdown, and advice. */
 function CampaignDrawer({
   campaign,
   scored,
   history,
+  goal,
+  onGoalSaved,
   onClose,
 }: {
   campaign: CampaignMetrics;
   scored?: ScoredCampaign;
   history: CampaignSnapshot[] | null;
+  goal?: CampaignGoal;
+  onGoalSaved: () => void;
   onClose: () => void;
 }) {
   const [metric, setMetric] = useState<DrawerMetric>("ctr");
@@ -244,6 +328,8 @@ function CampaignDrawer({
             <Stat label="Conv. value" value={eur(campaign.conversionValue)} />
             <Stat label="ROAS" value={roasText(campaign)} />
           </div>
+
+          <GoalEditor campaignId={campaign.campaignId} goal={goal} onSaved={onGoalSaved} />
 
           {scored?.penalties && scored.penalties.length > 0 && (
             <div>
@@ -323,6 +409,7 @@ function SortHeader({
 export default function OverviewPage() {
   const [data, setData] = useState<CampaignsResponse | null>(null);
   const [scores, setScores] = useState<Record<string, ScoredCampaign>>({});
+  const [goals, setGoals] = useState<Record<string, CampaignGoal>>({});
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<CampaignMetrics | null>(null);
   const [history, setHistory] = useState<CampaignSnapshot[] | null>(null);
@@ -350,13 +437,19 @@ export default function OverviewPage() {
     setRefreshing(true);
     setError(null);
     try {
-      const [campaignsRes, scoreRes] = await Promise.all([
+      const [campaignsRes, scoreRes, goalsRes] = await Promise.all([
         fetch(`${API_URL}/api/campaigns`),
         fetch(`${API_URL}/api/analyze/score`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         }).catch(() => null),
+        fetch(`${API_URL}/api/goals`).catch(() => null),
       ]);
+
+      if (goalsRes && goalsRes.ok) {
+        const g: GoalsResponse = await goalsRes.json();
+        setGoals(Object.fromEntries(g.goals.map((x) => [x.campaignId, x])));
+      }
 
       if (!campaignsRes.ok) {
         const body = await campaignsRes.json().catch(() => null);
@@ -613,6 +706,8 @@ export default function OverviewPage() {
           campaign={selected}
           scored={scores[selected.campaignId]}
           history={history}
+          goal={goals[selected.campaignId]}
+          onGoalSaved={load}
           onClose={() => setSelected(null)}
         />
       )}

@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type {
+  CampaignGoal,
   CampaignMetrics,
   CampaignsResponse,
   CampaignSnapshot,
@@ -51,6 +52,12 @@ export function getDb(): Database.Database {
       note           TEXT NOT NULL DEFAULT '',
       recommendation TEXT NOT NULL DEFAULT '',
       created_at     TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS goals (
+      campaign_id TEXT PRIMARY KEY,
+      target_roas REAL,
+      target_cpa  REAL,
+      updated_at  TEXT NOT NULL
     );
   `);
   // Migrate older databases that predate the ROAS columns.
@@ -259,4 +266,48 @@ export function readFeedback(limit = 50): FeedbackEntry[] {
     .prepare("SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?")
     .all(limit) as FeedbackRow[];
   return rows.map(toFeedback);
+}
+
+// ── Per-campaign goals/targets ────────────────────────────────────────
+
+interface GoalRow {
+  campaign_id: string;
+  target_roas: number | null;
+  target_cpa: number | null;
+}
+
+/** All saved goals. */
+export function readGoals(): CampaignGoal[] {
+  const rows = getDb()
+    .prepare("SELECT campaign_id, target_roas, target_cpa FROM goals")
+    .all() as GoalRow[];
+  return rows.map((r) => ({
+    campaignId: r.campaign_id,
+    targetRoas: r.target_roas ?? undefined,
+    targetCpa: r.target_cpa ?? undefined,
+  }));
+}
+
+/** Saved goals keyed by campaignId, for scoring. */
+export function readGoalMap(): Record<string, CampaignGoal> {
+  return Object.fromEntries(readGoals().map((g) => [g.campaignId, g]));
+}
+
+/** Insert or update one campaign's targets. */
+export function upsertGoal(g: CampaignGoal): void {
+  getDb()
+    .prepare(
+      `INSERT INTO goals (campaign_id, target_roas, target_cpa, updated_at)
+       VALUES (@campaign_id, @target_roas, @target_cpa, @updated_at)
+       ON CONFLICT(campaign_id) DO UPDATE SET
+         target_roas = excluded.target_roas,
+         target_cpa  = excluded.target_cpa,
+         updated_at  = excluded.updated_at`
+    )
+    .run({
+      campaign_id: g.campaignId,
+      target_roas: g.targetRoas ?? null,
+      target_cpa: g.targetCpa ?? null,
+      updated_at: new Date().toISOString(),
+    });
 }
