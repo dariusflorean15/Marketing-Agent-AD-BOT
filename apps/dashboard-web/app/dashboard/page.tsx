@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AnalysisResult,
   AnalyzeRunResponse,
@@ -273,39 +273,48 @@ export default function OverviewPage() {
     }
   }
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [campaignsRes, scoreRes] = await Promise.all([
-          fetch(`${API_URL}/api/campaigns`),
-          fetch(`${API_URL}/api/analyze/score`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          }).catch(() => null),
-        ]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-        if (!campaignsRes.ok) {
-          const body = await campaignsRes.json().catch(() => null);
-          throw new Error(body?.error ?? `API returned ${campaignsRes.status}`);
-        }
-        setData(await campaignsRes.json());
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const [campaignsRes, scoreRes] = await Promise.all([
+        fetch(`${API_URL}/api/campaigns`),
+        fetch(`${API_URL}/api/analyze/score`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => null),
+      ]);
 
-        if (scoreRes && scoreRes.ok) {
-          const scoreData: AnalyzeRunResponse = await scoreRes.json();
-          const map: Record<string, ScoredCampaign> = {};
-          for (const r of scoreData.results as ScoredCampaign[]) map[r.campaignId] = r;
-          setScores(map);
-        }
-      } catch (e) {
-        setError(
-          e instanceof Error
-            ? `${e.message} — is the API server running on port 4000?`
-            : "Unknown error"
-        );
+      if (!campaignsRes.ok) {
+        const body = await campaignsRes.json().catch(() => null);
+        throw new Error(body?.error ?? `API returned ${campaignsRes.status}`);
       }
+      setData(await campaignsRes.json());
+
+      if (scoreRes && scoreRes.ok) {
+        const scoreData: AnalyzeRunResponse = await scoreRes.json();
+        const map: Record<string, ScoredCampaign> = {};
+        for (const r of scoreData.results as ScoredCampaign[]) map[r.campaignId] = r;
+        setScores(map);
+      }
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? `${e.message} — is the API server running on port 4000?`
+          : "Unknown error"
+      );
+    } finally {
+      setRefreshing(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const summary = useMemo(() => {
     if (!data) return null;
@@ -354,16 +363,28 @@ export default function OverviewPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Overview</h2>
-        {data && (
-          <div className="flex gap-2">
-            <SourceBadge name="Meta" info={data.sources.meta} />
-            <SourceBadge name="Google" info={data.sources.google} />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {data && (
+            <>
+              <SourceBadge name="Meta" info={data.sources.meta} />
+              <SourceBadge name="Google" info={data.sources.google} />
+            </>
+          )}
+          <button
+            onClick={load}
+            disabled={refreshing}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing…" : "↻ Refresh"}
+          </button>
+        </div>
       </div>
-      <p className="mt-2 text-slate-600">Last 7 days, all platforms.</p>
+      <p className="mt-2 text-slate-600">
+        Last 7 days, all platforms.
+        {lastUpdated && <span className="text-slate-400"> · Updated {lastUpdated}</span>}
+      </p>
 
       {error && (
         <p className="mt-6 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>
@@ -480,6 +501,21 @@ export default function OverviewPage() {
           </table>
         </div>
       )}
+
+      {data && data.sources.meta.source === "live" &&
+        data.campaigns.filter((c) => c.platform === "meta").length === 0 && (
+          <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <span className="font-medium">Meta is connected and live</span> — there are just no active
+            campaigns in the last 7 days yet. Real Meta data will appear here once you&apos;re running ads.
+          </div>
+        )}
+      {data && data.sources.google.source === "live" &&
+        data.campaigns.filter((c) => c.platform === "google").length === 0 && (
+          <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <span className="font-medium">Google is connected and live</span> — no active campaigns in the
+            last 7 days yet.
+          </div>
+        )}
 
       {data && data.campaigns.length > 0 && (
         <p className="mt-3 text-xs text-slate-400">Tip: click a campaign to see its trend and full breakdown.</p>
